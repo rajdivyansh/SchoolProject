@@ -1,0 +1,24 @@
+
+task generateDoxygenDocs(type: Exec)  {
+	group = "MaaS 360 Helper Tasks"
+	description = "Generates doxgen reports"
+	workingDir = file("$projectDir")
+	executable = "bash"
+	commandLine = ['doxygen', 'doc_config/doxygen_config.conf']
+	doFirst {
+		file("$projectDir/html").deleteDir()
+	}
+}
+
+task generateDocs(type: Tar, dependsOn: generateDoxygenDocs) {
+	group = "MaaS 360 Helper Tasks"
+	description = "Generates doxygen docs"
+	extension = "tar.gz"
+	archiveName = "${project.name}-api-doc-${project.version}.${extension}"
+	compression = Compression.GZIP
+	destinationDir = file(projectDistDir)
+	from  file("html")
+	doLast {
+		file("$projectDir/html").deleteDir()
+	}
+}

@@ -1,0 +1,49 @@
+// Source set decleration for integration tests
+sourceSets {
+	intTest
+
+	// To get around https://issues.gradle.org/browse/GRADLE-2579
+	ext.dummies = "${rootDir}/cbg/project_setup/dummies"
+}
+
+configurations {
+	// Added for providing "provided" scope for jar artifacts
+	provided
+
+	// Integration test configuration hierarchy
+	intTestCompile.extendsFrom testCompile
+	intTestRuntime.extendsFrom testRuntime, intTestCompile
+}
+
+
+// Source sets for main java classes and resources
+sourceSets.main {
+	java.srcDirs = ["src/java", sourceSets.dummies]
+	resources.srcDirs = ["src/java", "src/resources"]
+	compileClasspath += configurations.provided	
+}
+
+// Source set for unit tests
+sourceSets.test {
+	java.srcDirs = ["src/test/unit", sourceSets.dummies]
+	resources.srcDirs = ["src/test/unit"]
+
+	compileClasspath += configurations.provided
+	runtimeClasspath += configurations.provided
+}
+
+// Source set for integration tests
+sourceSets.intTest {
+	java.srcDirs = ["src/test/integration", sourceSets.dummies]
+	resources.srcDirs = ["src/test/integration"]
+
+	compileClasspath += sourceSets.main.output + sourceSets.test.output + configurations.provided
+	runtimeClasspath += sourceSets.main.output + sourceSets.test.output + configurations.provided
+}
+
+// Apply custom source sets for the multi-project setup if there is one defined
+ext.sourceSetsConfigFilePath = "$rootDir/source-sets.gradle"
+if (file(sourceSetsConfigFilePath).exists()) {
+	logger.info("Found custom source sets configuration for project setup")
+	apply from: "file://$sourceSetsConfigFilePath"
+}

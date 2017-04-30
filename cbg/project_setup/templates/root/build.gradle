@@ -1,0 +1,30 @@
+apply from: "file://$rootDir/repositories.gradle"
+
+configurations {
+    commonBuildGradle
+}
+
+configurations.commonBuildGradle {
+    resolutionStrategy.cacheDynamicVersionsFor(CBG_CACHE_PERIOD_IN_SECONDS.toInteger(), "seconds")
+}
+
+dependencies {
+    commonBuildGradle("investo2o:cbg_${CBG_REPO_VERSION}:${CBG_VERSION}")
+}
+
+configurations.commonBuildGradle.each { file ->
+    copy {
+        from zipTree(file)
+        into rootDir
+        exclude "**/META-INF/**", "version.properties"
+    }
+}
+
+apply from: "file://$rootDir/cbg/common-parent-build.gradle"
+apply plugin: "idea"
+idea.project.vcs = "Git"
+
+apply plugin: "project-report"
+htmlDependencyReport {
+    projects = project.allprojects
+}

@@ -1,0 +1,27 @@
+// Piece of code to apply properties (such as version number of artifacts) for the project recursively
+// starting from the top most level (parent project folder) to the project level.
+// Properties at the lowest level are given highest precedence.
+{ path ->
+	Stack propFileStack = {	propertiesFilePath ->
+		Stack propFileStack = new Stack()
+		
+		String currentPath = propertiesFilePath
+		while (file(currentPath).isFile()) {
+			propFileStack.push(currentPath)
+			currentPath = "../" + currentPath
+		}
+		
+		return propFileStack;
+	}(path)
+	
+	while(!propFileStack.empty()) {
+		apply from: "file://$rootDir/cbg/project_setup/internal-dependency-versions.gradle"
+		apply from: propFileStack.pop()
+	}
+
+}("properties.gradle")
+
+apply from: "file://$rootDir/cbg/project_setup/external-dependency-versions.gradle"
+
+project.group = "${project_group}"
+project.version = "${release_version}"

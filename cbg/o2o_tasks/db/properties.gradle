@@ -1,0 +1,16 @@
+ext {
+	COMMON_MERGE_PREFIX = 'MERGE INTO %schema%.%table_name% tgt '
+	COMMON_USING_CLAUSE = 'USING (%src_clause%) src '
+	COMMON_ON_CLAUSE    = 'ON (%on_clause%) '
+	COMMON_MATCHED_CLAUSE = 'WHEN MATCHED THEN ' +
+								'UPDATE SET %update_clause% '
+	COMMON_NOT_MATCHED_CLAUSE = 'WHEN NOT MATCHED THEN ' +
+								'INSERT (%insert_cols%) VALUES (%insert_values%)'
+
+	FILE_ROW_REGEX = "(?:\'?([a-zA-Z]+[a-zA-Z0-9\$_#]*)\'?=)?\'((?:(?:[^\'\\\\]*)(?:\\\\.)?)*)\'"
+	TEXT_ELEMENTS_BASE_PATH = '/data/vpn2'
+	TEMP_TRANSLATION_FILE_PATH_SUFFIX = '/mockTransTemp.properties'
+	FINAL_TRANSLATION_FILE_PATH_SUFFIX = '/mockTransFinal.properties'
+	MERGE_DATA_SQL_FILE_PATH_SUFFIX = '/text_elements_insertion.dat.sql'
+	TEXT_FILES_BASE_PATH = '/text_elements_files'
+}

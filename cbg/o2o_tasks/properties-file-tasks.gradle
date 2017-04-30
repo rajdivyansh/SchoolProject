@@ -1,0 +1,322 @@
+ext {
+
+	LANG_FILES_FOLDER = "language_files"
+	PROPERTY_FILE_EXTENSION = ".properties"
+	ENCODING = "UTF-8"
+	FILE_SEPERATOR = System.getProperty("file.separator")
+	LINE_SEPERATOR = System.getProperty("line.separator")
+	LANGUAGE_EN = 'en'
+	LANGUAGE_TA = 'ta'
+	SUPPORTED_LANGUAGES = [LANGUAGE_EN, 'de', 'es', 'fr', 'it', 'ja', 'ko', 'nl', 'pt', 'zh_CN', 'zh_TW', 'ru', LANGUAGE_TA,'cs','pl','no']
+	investo2oHelperTaskGroup = "MaaS 360 Helper Tasks"
+	HELP_LINK = "http://knowledge.investo2o.com/display/emc/Common+Build+on+Gradle"
+}
+
+configurations { 
+	mockTranslationConf
+}
+
+dependencies {
+	mockTranslationConf "ibm:rpx:1.0"
+}
+
+def getPropFile(path, propertyFileName, createIfNotFound, lang) {
+	if(propertyFileName == null) {
+		throw new GradleException("ERROR: Property file name can't be empty \n For help on usage, visit ${HELP_LINK}")
+	}
+
+	def srcPropFile = ""
+	if(lang.size() > 2)	{
+		lang= lang.replaceAll("-", "_")
+	}
+
+	if(lang == LANGUAGE_EN) {
+		srcPropFile = "${path}${FILE_SEPERATOR}${propertyFileName}${PROPERTY_FILE_EXTENSION}"	
+	}
+	else {
+		srcPropFile = "${path}${FILE_SEPERATOR}${propertyFileName}${PROPERTY_FILE_EXTENSION}_${lang}"
+	}
+	
+	def sourcePropertyFile = new File(srcPropFile)
+
+	if (!sourcePropertyFile.exists()) {
+		if(createIfNotFound) {
+			logger.lifecycle "Property file ${srcPropFile} not found, so creating one!"
+			sourcePropertyFile.parentFile.mkdirs()
+			sourcePropertyFile.createNewFile()
+		}
+		else {
+			throw new GradleException("ERROR: [${srcPropFile}] -> File not found! \n For help on usage, visit ${HELP_LINK}")
+		}
+	}
+	
+	return sourcePropertyFile
+}
+
+def convertToASCII(supportedLanguages, originalTranslationsFolderPath, propertyFileName, path) {
+	logger.lifecycle "Converting files to ASCII FORMAT"
+	
+	// Calling JDK's native2ascii to convert the generated files to ASCII code., clever ain't I :)
+	supportedLanguages.each { lang ->
+		def prog = "native2ascii -encoding utf-8"
+		def code = lang
+
+		if(code.size() > 2) {
+			code=code.replaceAll("-", "_")
+		}
+
+		def srcFile = "${originalTranslationsFolderPath}${FILE_SEPERATOR}${propertyFileName}${PROPERTY_FILE_EXTENSION}_${code}"
+		def targetFile = "${path}${FILE_SEPERATOR}${propertyFileName}_${code}${PROPERTY_FILE_EXTENSION}"
+		("${prog} ${srcFile} ${targetFile}").execute().waitFor()
+	}
+	
+	logger.lifecycle "Finished ASCII conversion"
+}
+
+def convertTextFromDos2Unix(inputFile, encoding) {
+	def fileText = inputFile.getText(encoding).replaceAll("\r\n", "\n")
+	inputFile.write(fileText, encoding)
+}
+
+def convertFileFromDos2Unix(supportedLanguages, originalTranslationsFolderPath, propertyFileName, path) {
+	logger.lifecycle "Converting files from DOS to UNIX FORMAT"
+	
+	supportedLanguages.each { lang ->
+		def (file, fileText) = ["", ""]
+		
+		if(lang == LANGUAGE_EN) {
+			file = getPropFile(path, propertyFileName, false, lang)
+			convertTextFromDos2Unix(file, ENCODING)
+		}
+		else {
+			// For the file INSIDE language_files folder
+			file = getPropFile(originalTranslationsFolderPath, propertyFileName, false, lang)
+			convertTextFromDos2Unix(file, ENCODING)
+			
+			// For the file OUTSIDE language_files folder
+			file = new File("${path}${FILE_SEPERATOR}${propertyFileName}_${lang}${PROPERTY_FILE_EXTENSION}")
+			if (file.exists()) {
+				convertTextFromDos2Unix(file, ENCODING)
+			}
+			else {
+				throw new GradleException("ERROR: [${file}] -> File not found! \n For help on usage, visit ${HELP_LINK}")
+			}
+		}
+	}
+
+	logger.lifecycle "Finished DOS to UNIX conversion"
+}
+
+def findDuplicateKeys(keys, printDuplicateKeys) {
+	def (specific_keys, duplicate_keys) = [[],[]]
+	
+	keys.each { key ->
+		if(specific_keys.contains(key)) {
+			if(!duplicate_keys.contains(key)) {
+				duplicate_keys.push(key)
+			}
+		}
+		else {
+			specific_keys.push(key)
+		}
+	}
+
+	if(printDuplicateKeys) {
+		if(duplicate_keys.size() > 0) {
+			logger.lifecycle "Duplicate keys are : ${duplicate_keys}"
+		}
+		else {
+			logger.lifecycle "No duplicate keys found."
+		}
+	}
+
+	// find duplicate keys and return only specific keys
+	return duplicate_keys
+}
+
+def deleteDuplicateKeys(lines, keys) {
+	def duplicate_keys_occurance = [:]
+	def (result_lines, lines_copy) = [[],[]]
+
+	keys.each { key ->
+		duplicate_keys_occurance.put(key,0)
+	}
+
+	lines.each { line ->
+		lines_copy.add(line)
+	}
+
+	lines_copy.reverseEach {line ->
+		if(! (line.trim().startsWith('#')|| line.trim().size()==0) ) {
+			def prop = getKeyValuePair(line,'=')
+			def key = prop[0].trim();
+			if(keys.contains(key)) {
+				if(duplicate_keys_occurance.get(key) == 0) {
+					result_lines.add(line)
+					duplicate_keys_occurance.put(key,1)
+				}
+			}
+			else {
+				result_lines.add(line)
+			}
+		}
+		else {
+			// add the commented lines
+			result_lines.add(line)
+		}
+	}
+
+	return result_lines.reverse()
+}
+
+def cleanSourceFileWithDupKeys(fromtranslate, sourceFileKeys, sourcePropertyFile, sourceFileContent) {
+	def duplicate_keys = findDuplicateKeys(sourceFileKeys, true)
+
+	if(duplicate_keys != null && duplicate_keys.size() > 0) {
+		// delete duplicate keys in the source file(english .properties) only if duplicate keys are present
+		sourceFileContent = deleteDuplicateKeys(sourceFileContent,duplicate_keys)
+
+		sourcePropertyFile.delete()
+		sourcePropertyFile.createNewFile()
+
+		sourceFileContent.each { line -> 
+			sourcePropertyFile.append(line + LINE_SEPERATOR, ENCODING)
+		}
+
+		logger.lifecycle "Removed the duplicate keys."
+	}
+
+	return sourceFileContent
+}
+
+def getKeysFromFile(fileContent, seperator) {
+	def keys = []
+	
+	fileContent.each { line ->
+		if(! (line.trim().startsWith("#")|| line.trim().size()==0) ) {
+			def index = -1
+			index = line.indexOf("=")
+			keys.add(line.substring(0, index).trim())
+		}
+	}
+
+	return keys
+}
+
+def getKeyValuePair(content, seperator) {
+	def index = -1
+	index = content.indexOf(seperator)
+	return [ content.substring( 0, index ).trim(), content.substring( index+1, content.length() ).trim() ]
+}
+
+def getKeyValuePairFromFileContent(content, seperator) {
+	def keyVals = [:]
+
+	content.each {line ->
+		if(! (line.trim().startsWith("#")|| line.trim().size()==0) ) {
+			def prop = getKeyValuePair(line,seperator)
+			keyVals.put(prop[0].trim(),prop[1].trim())
+		}
+	}
+	
+	return keyVals
+}
+
+task getRPXJar(type: Copy) {
+	group = investo2oHelperTaskGroup
+	description = "Downloads the RPX tool used for mock translations, into the local repo"
+
+	from {
+		configurations.mockTranslationConf.collect { zipTree(it) }
+	}
+	into {
+		"${rootDir}/cbg/RPX/"
+	}
+}
+
+task copyProperties (dependsOn: getRPXJar) {
+
+	group = investo2oHelperTaskGroup
+	description = "Copies the language strings from english properties file to other language files."
+	
+	doLast {
+		def propertyFileName = project.hasProperty("srcFileName") ? srcFileName : null
+		def path = project.hasProperty("srcFolder") ? srcFolder : project.sourceSets.main.java.srcDirs[0]
+		def changedKeys = project.hasProperty("keys") ? keys.tokenize(",") : []
+
+		def sourcePropertyFile = getPropFile(path, propertyFileName, false, "en")
+		def sourceFileContent = sourcePropertyFile.readLines(ENCODING)
+		def sourceFileKeys = getKeysFromFile(sourceFileContent, '=')
+
+		def langFolderPath = "${path}${FILE_SEPERATOR}${LANG_FILES_FOLDER}"
+
+		// added for duplicate key detection
+		def duplicate_keys = findDuplicateKeys(sourceFileKeys, false)
+		sourceFileContent = cleanSourceFileWithDupKeys(true, sourceFileKeys, sourcePropertyFile, sourceFileContent)
+		
+		if(duplicate_keys != null && duplicate_keys.size() > 0)	{
+			duplicate_keys.each { changedKeys.add(it) }
+		}
+
+		logger.lifecycle "Starting property file edits"
+		
+		SUPPORTED_LANGUAGES.each { lang ->
+			if(lang != LANGUAGE_EN) {
+				def targetLangFile = getPropFile(langFolderPath, propertyFileName, true, lang)
+				
+				if(lang == LANGUAGE_TA) {
+					logger.lifecycle "Copying the mock translations of the properties file to ${lang} (${targetLangFile})"
+					
+					targetLangFile.delete()
+					targetLangFile.createNewFile()
+					def rpxClasspath = ["$rootDir/cbg/RPX/rpx.jar", "$rootDir/cbg/RPX"];
+					def rpxClasspathFiles = files(rpxClasspath)
+					javaexec {
+						main = 'Rpx'
+						classpath = rpxClasspathFiles
+						args = [sourcePropertyFile.path, targetLangFile.path]
+					}
+				}
+				else {
+					logger.lifecycle "Copying the language properties file for ${lang} (${targetLangFile})"
+					
+					def (targetFileKeys, originalContentStor) = [[],[]]
+					if(targetLangFile.exists()) {
+						targetFileKeys = getKeysFromFile(targetLangFile.readLines(ENCODING), "=")
+						originalContentStor = getKeyValuePairFromFileContent(targetLangFile.readLines(ENCODING), "=")
+					}
+					targetLangFile.delete()
+					targetLangFile.createNewFile()
+					
+					sourceFileContent.each { line ->
+						if(! (line.startsWith("#") || line.trim().size()==0) ) {
+							def keyVal = getKeyValuePair(line,"=")
+							def lineToAdd = ""
+							if(targetFileKeys.size() != 0 && targetFileKeys.contains(keyVal[0])) {
+								if(changedKeys.contains(keyVal[0])) {
+									logger.lifecycle line
+									lineToAdd = "${keyVal[0]}=${keyVal[1]}${LINE_SEPERATOR}"
+								}
+								else {
+									lineToAdd = "${keyVal[0]}=${originalContentStor[keyVal[0]]}${LINE_SEPERATOR}"
+								}
+								targetLangFile.append(lineToAdd, ENCODING)
+							}
+							else {
+								logger.lifecycle line
+								lineToAdd = "${keyVal[0]}=${keyVal[1]}${LINE_SEPERATOR}"
+								targetLangFile.append(lineToAdd, ENCODING)
+							}
+						}
+						else {
+							targetLangFile.append("${line}${LINE_SEPERATOR}", ENCODING)
+						}
+					}
+				}
+			}
+		}
+		convertToASCII(SUPPORTED_LANGUAGES, langFolderPath, propertyFileName, path)
+		convertFileFromDos2Unix(SUPPORTED_LANGUAGES, langFolderPath, propertyFileName, path)
+	}
+}
+

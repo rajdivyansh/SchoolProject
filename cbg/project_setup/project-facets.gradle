@@ -1,0 +1,40 @@
+if (file("$rootDir/facets/config.gradle").exists()) {
+	logger.info "Project facets configuration found"
+	apply from: "$rootDir/facets/config.gradle"
+
+	dependencies {
+		ext {
+			includeFacets = { Object... facetNames ->
+				facetNames.each { facetName ->
+					facet = facets[facetName]
+					if (facet == null) {
+						throw new GradleException("Invalid facet: ${facetName}")
+					}
+					facet.each { module, scope ->
+						dependencies.ext."${scope}Project"(":facets:${module}")
+					}
+				}
+			}
+		}
+	}
+
+	task facets {
+		ext.helpText = ''
+		doLast {
+			if (project.hasProperty("facetName")) {
+				def help = dependencies.facetDocs[facetName]
+				if (help) {
+					println "\n'${facetName}': ${help[0]}"
+				} else {
+					println "\nFacet '${facetName}' doesn't exist. Type 'gradle facets' for the list of available facets."
+				}
+			} else {
+				println "\nList of available facets:"
+				println dependencies.facetDocs.keySet().join(", ")
+				println "\nType 'gradle facets -PfacetName=<name>' for help on specified facet."
+			}
+		}
+	}
+}
+
+

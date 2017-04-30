@@ -1,0 +1,87 @@
+ext.installerType = "war"
+
+apply from: "file://$rootDir/cbg/o2o_tasks/izpack-installer-tasks.gradle"
+
+task copyWarInstallerProps(dependsOn: war) {
+	group = installerTaskGroup
+	description = "Copies installer properties into project installer template folder required by war installer."
+
+	ext.syslogLog4jAppenderTemplate = "${rootDir}/cbg/project_setup/templates/logging/syslog-appender.xml"
+	inputs.dir projectConfigDir
+	inputs.files configurations.runtime, syslogLog4jAppenderTemplate
+	outputs.dir buildInstallerPropsDir
+
+	doFirst {
+		file(buildInstallerPropsDir).deleteDir()
+	}
+
+	doLast {
+		logger.info("Copying installer props for '${project.path}' into installer templates folder")
+		war.classpath.each { File file ->
+			def fileName = file.name
+			if (fileName.endsWith(".jar")) {
+				def fileNameWithoutExt = fileName.replace(".jar", "")
+				copy {
+					from zipTree(file)
+					into "${installStageDir}"
+					include "${installerPropsDir}/*"
+					rename "installer_props.xml", "installer_props.xml.${fileNameWithoutExt}"
+				}
+			}
+		}
+
+		copy {
+			from projectConfigDir
+			into buildInstallerPropsDir
+		}
+		copy {
+			from syslogLog4jAppenderTemplate
+			into buildInstallerPropsDir
+		}
+	}
+}
+
+mergeInstallerXml {
+	dependsOn(copyWarInstallerProps)
+
+	inputs.dir buildInstallerPropsDir
+
+	doLast {
+		def buildInstallerProps = file(buildInstallerPropsDir)
+		if (!overriddenInstallerFile.exists() && buildInstallerProps.exists()) {
+			def mergedInstallerXmlNode = new XmlParser().parse(mergedInstallerFile)
+			def propertiesFilesPackNode = mergedInstallerXmlNode.packs[0].children().find { it.@name == "propertiesFiles" } 
+
+			// .properties files directy under this will be considered
+			buildInstallerProps.eachFile {
+				def fileName = it.name
+				if (fileName.endsWith(".properties")) {
+					def filePath = "\${tomcat.home}/conf/${fileName}"
+					propertiesFilesPackNode.appendNode("parsable", [targetfile: filePath])
+				}
+			}
+
+			writeXmlToFile(mergedInstallerFile, mergedInstallerXmlNode)
+		}
+	}
+}
+
+mergeAutoInstallXml {
+	dependsOn(copyWarInstallerProps)
+
+	autoInstallXmlName = "auto_install_${installerType}_${project.name}.xml"
+
+	inputs.dir buildInstallerPropsDir
+
+	doFirst {
+		projectInstallerXmls += fileTree(dir: buildInstallerPropsDir, includes: ["*installer_props.xml*"])
+	}
+}
+
+createInstaller {
+	dependsOn(copyWarInstallerProps)
+
+	installerJarName = "${project.name}-${installerType}-installer.jar"
+	
+	inputs.files war.outputs.files, copyWarInstallerProps.outputs.files
+}

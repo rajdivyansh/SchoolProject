@@ -1,0 +1,69 @@
+/**
+ * Settings file which should be at the root project level
+ * Recursively traverses the project folder hierarchy and determines which projects should be built
+ * This is done so that all projects in the project hierarchy that have a "build.gradle" file are picked up for the build
+ */
+def getProjectMap(String rootDir) {
+	Map mapOfProjectsToGradleBuildPaths = [:]
+	Set setOfParentDirs = [] as Set
+	
+	// We don't want these folders to represent projects! 
+	Set excludes = ["src", "build", "bin"] as Set
+	
+	// Walk through the folders recursively and find out which projects are present in the hierarchy
+	walk(rootDir, excludes, mapOfProjectsToGradleBuildPaths, setOfParentDirs, true);
+
+	// Remove parent directories from map of projects
+	mapOfProjectsToGradleBuildPaths.keySet().removeAll(setOfParentDirs);
+	
+	// Useful to print the project list so that we can see which ones were actually picked up for the build.
+	printProjectList(mapOfProjectsToGradleBuildPaths);
+	
+	return mapOfProjectsToGradleBuildPaths;
+}
+
+def walk(String path, Set excludes, Map mapOfProjectsToGradleBuildPaths, Set setOfParentDirs, boolean isRoot) {
+	
+	File folder = new File(path);
+	File[] listOfFiles = folder.listFiles();
+
+	for (File file : listOfFiles) {
+
+		String dirName = file.getName();
+		
+		if (file.isDirectory() && 
+			!(dirName.matches(".*/\\..*")) && 
+			!(dirName.matches("^\\..*")) && 
+			!excludes.contains(dirName) && 
+			new File(file.getAbsolutePath() + "/build.gradle").exists()) {
+			String gradleBuildPath = dirName;
+			
+			// Prepending parent directory name to projects present under root level must be skipped, since these are implied.
+			if (!isRoot) {
+				String parentDirName = file.getParentFile().getName();
+				
+				// Parent projects are just containers for child projects and won't require a build.
+				// Hence, put them in the set of parent dirs for removal from the map of projects.
+				setOfParentDirs.add(parentDirName);
+
+				// Gradle build path is specfied as "parentDirName:projectName"
+				String parentGradleBuildPath = mapOfProjectsToGradleBuildPaths.get(parentDirName);
+				gradleBuildPath = parentGradleBuildPath + ":" + dirName;
+			}
+			
+			// Add the project to the map along with the gradle build path
+			mapOfProjectsToGradleBuildPaths.put(dirName, gradleBuildPath);
+			
+			// Continue travelling recursively
+			walk(file.getAbsolutePath(), excludes, mapOfProjectsToGradleBuildPaths, setOfParentDirs, false);
+		}
+	}
+}
+
+def printProjectList(Map mapOfProjectsToGradleBuildPaths) {  
+	mapOfProjectsToGradleBuildPaths.each { key, value ->
+		logger.info("${key} - ${value}")
+	}
+}
+
+include getProjectMap(rootDir.getAbsolutePath()).values().toArray(new String[0]);

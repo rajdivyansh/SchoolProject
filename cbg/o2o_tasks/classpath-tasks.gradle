@@ -1,0 +1,36 @@
+task createClasspathFile {
+	group = build.group
+	description = "Creates classpath file for build artifact."
+
+	// This needs to be customized for each kind of application
+	ext.classpath = []
+	
+	ext.cpFile = file("${projectDistDir}/classpath.txt")
+	outputs.files cpFile
+
+	doLast {
+		cpFile.delete();
+		cpFile.parentFile.mkdirs()
+		classpath.findAll { it.name.endsWith(".jar") }.each { file ->
+			cpFile << "${file.name}\n"
+		}
+	}
+}
+
+task copyClasspathFiles(type: Copy) {
+	group = build.group
+	description = "Copies classpath files into third-party dependencies."
+
+	into thirdPartyLibDir
+	include "*.jar"
+}
+
+afterEvaluate {
+	createClasspathFile {
+		inputs.files classpath
+	}
+
+	copyClasspathFiles {
+		from createClasspathFile.inputs.files
+	}
+}

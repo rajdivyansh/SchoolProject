@@ -1,0 +1,15 @@
+ext {
+
+	ReleaseDocumentTaskGroup = "Task group for tasks related to release documents"
+
+}
+
+// Usage : gradle releaseModule -Ptype=release -Prname=MaaS_10.42
+task releaseModule {
+
+    group = ReleaseDocumentTaskGroup
+	description = "Creates a new release doc folder for a release"
+	println "Type = ${type}, Name = ${rname}"
+
+}
+

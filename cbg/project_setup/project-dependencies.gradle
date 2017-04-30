@@ -1,0 +1,59 @@
+apply from: "$rootDir/cbg/project_setup/project-facets.gradle"
+apply from: "$rootDir/cbg/project_setup/dependency-validations.gradle"
+
+// Local/external dependency resolution 
+dependencies {
+	ext {
+		confProject = { conf, targetConf, projectPath, Closure closure ->
+			if (!projectPath.startsWith(":")) {
+				throw new GradleException("Invalid project path ${projectPath}. Project paths must start with ':'")
+			}
+			if (!project.findProject(projectPath)) {
+				logger.info("'${projectPath}' missing in local checkout. Trying external repositories")
+				def projectName = projectPath.substring(projectPath.lastIndexOf(':') + 1)
+				dependencies."$conf"("${project_group}:${projectName}:${release_version}", closure)
+			} else {
+				logger.info("'${projectPath}' found in local checkout")
+				dependencies."$conf"(project(path: projectPath, configuration: targetConf), closure)
+				dependencies."$conf"(project(projectPath)) { transitive = false }
+			}
+		}
+
+		compileProject = { projectPath, Closure closure = {} ->
+			confProject("compile", "compile", projectPath, closure)
+			runtimeProject(projectPath, closure)
+		}
+		
+		runtimeProject = { projectPath, Closure closure = {} ->
+			confProject("runtime", "runtime", projectPath, closure)
+		}
+
+		providedProject = { projectPath, Closure closure = {} ->
+			confProject("provided", "compile", projectPath, closure)
+		}
+		
+		testCompileProject = { projectPath, Closure closure = {} ->
+			confProject("testCompile", "testCompile", projectPath, closure)
+			testRuntimeProject(projectPath, closure)
+		}
+		
+		testRuntimeProject = { projectPath, Closure closure = {} ->
+			confProject("testRuntime", "testRuntime", projectPath, closure)
+		}
+	}
+}
+
+task cleanFibDeps {
+	description = "Cleans all investo2o jars from local Gradle ivy repo."
+	
+	doLast {
+		def dirsToDelete = []
+		fileTree("$gradle.gradleUserHomeDir/caches/modules-2").visit {
+			def file = it.file
+			if (file.isDirectory() && file.name.equals("investo2o")) {
+				dirsToDelete << file
+			}
+		}
+		dirsToDelete.each { it.deleteDir() }
+	}
+}

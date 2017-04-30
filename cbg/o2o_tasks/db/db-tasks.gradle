@@ -1,0 +1,30 @@
+/** Generate incremental drop folders **/
+ext {
+	noOfDaysToGenerateFor = 5
+	databaseTasksGroup = 'InvestO2O Database gradle tasks'
+}
+
+allprojects {
+    task generateIncrementalDrops {
+		group = databaseTasksGroup
+		description = "Generate incremental drop folders for next ${noOfDaysToGenerateFor} days. Pass noOfDaysToGenerateFor to override the default no of days"
+	}
+}
+
+project(":qa_incremental_drops") {
+	generateIncrementalDrops {
+		doLast {
+		   def currentDate = new Date()
+		   (1..noOfDaysToGenerateFor).each { day -> 
+			   def nextDate = currentDate
+			   nextDate.date += 1
+			   copy {
+				   from "$rootDir/qa_incremental_drops/qa_drop_template"
+				   into "$rootDir/qa_incremental_drops/${nextDate.format('yyyy_MM_dd')}"
+			   }
+		   }
+		}
+	} 
+}
+
+

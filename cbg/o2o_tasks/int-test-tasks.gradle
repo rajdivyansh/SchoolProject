@@ -1,0 +1,15 @@
+// Task for running integration tests whose sources are defined in under "intTest" source set
+task intTest(type: Test) {
+	group = test.group
+	description = test.description.replace("unit", "integration")
+
+	testClassesDir = sourceSets.intTest.output.classesDir
+	classpath = sourceSets.intTest.runtimeClasspath
+	testLogging.exceptionFormat = "full"
+}
+
+afterEvaluate {
+	intTest {
+		testSrcDirs = [sourceSets.intTest.java.srcDirs]
+	}
+}

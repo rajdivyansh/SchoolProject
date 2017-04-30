@@ -1,0 +1,16 @@
+<userInput>
+  <panel order="0">
+    <field type="text" variable="tomcat.home">
+      <spec txt="Tomcat Home:"
+            id="tomcat.home"
+            size="255" 
+            set="${tomcat.home}" />
+    </field>
+    <field type="text" variable="cc.number">
+      <spec txt="Change Control Number:"
+            id="cc.number"
+            size="10" 
+            set="${cc.number}" />
+    </field>
+  </panel>
+</userInput>

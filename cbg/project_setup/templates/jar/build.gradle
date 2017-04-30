@@ -1,0 +1,5 @@
+apply from: "file://$rootDir/cbg/common-jar.gradle"
+
+dependencies {
+
+}

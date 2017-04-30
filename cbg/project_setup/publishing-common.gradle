@@ -1,0 +1,90 @@
+// Constants for generating ivy.xml
+ext.gradleToIvyConfMappings = [
+	"compile" : "compile->default",
+	"runtime" : "runtime->default",
+	"testCompile" : "test->compile",
+	"testRuntime" : "test->runtime",
+	"provided" : "provided->default",
+]
+
+ext.ivyConfs = [
+	[conf: "conf", props: [name: "compile"]],
+	[conf: "conf", props: [name: "runtime", extends: "compile"]],
+	[conf: "conf", props: [name: "test", extends: "runtime"]],
+	[conf: "conf", props: [name: "j2ee"]],
+	[conf: "conf", props: [name: "war", extends: "runtime"]],
+	[conf: "conf", props: [name: "tgz"]],
+	[conf: "conf", props: [name: "provided", extends: "compile"]],
+	[conf: "conf", props: [name: "default", extends: "runtime"]],
+]
+
+ext.ivyPublications =  [
+	[name: project.name, type: "jar", conf: "compile"]
+]
+
+// Helper methods for generating ivy.xml
+// TODO: add docs for these
+ext.generateIvyXml = { rootNode ->
+	rootNode.@version = "1.1"
+	appendIvyConfs(rootNode)
+	appendIvyPublications(rootNode)
+	appendDependencies(rootNode)
+	appendGlobalExcludeRules(rootNode)
+}
+
+ext.appendIvyConfs = { rootNode ->
+	def confsNode = rootNode.configurations[0]
+	removeChildNodes(confsNode)
+	ivyConfs.each { confsNode.appendNode(it.conf, it.props) }
+}
+
+ext.appendIvyPublications = { rootNode ->
+	def ivyPubsNode = rootNode.publications[0]
+	removeChildNodes(ivyPubsNode)
+	ivyPublications.each { ivyPubsNode.appendNode("artifact", it) }
+}
+
+ext.appendDependencies = { rootNode ->
+	def depsNode = rootNode.dependencies[0]
+	removeChildNodes(depsNode)
+	gradleToIvyConfMappings.each { gradleConf, ivyConf ->
+		project.configurations."${gradleConf}".dependencies.each {
+			// Applicable for module dependencies only. 
+			// Any other type of dependencies are ignored for ivy publish as ivy.xml doesn't support these.
+			if (it instanceof ModuleDependency) {
+				def depProps = [org: it.group, name: it.name, rev: it.version, conf: ivyConf]
+				if (!it.transitive) {
+					depProps.put("transitive", "false")
+				}
+
+				def node = depsNode.appendNode("dependency", depProps)
+				appendExcludeRules(node, it)
+			}
+		}
+	}
+}
+
+ext.appendGlobalExcludeRules = { rootNode ->
+	def depsNode = rootNode.dependencies[0]
+	gradleToIvyConfMappings.each {
+		gradleConf, ivyConf ->
+		appendExcludeRules(depsNode, project.configurations."${gradleConf}")
+	}
+}
+
+ext.appendExcludeRules = { node, config ->
+	config.excludeRules.each { 
+		def orgStr = it.group
+		def moduleStr = it.module
+
+		def excludeProps = new HashMap()
+		if (orgStr) excludeProps.put("org", orgStr)
+		if (moduleStr) excludeProps.put("module", moduleStr)
+
+		node.appendNode("exclude", excludeProps)
+	}
+}
+
+ext.removeChildNodes = { node ->
+	node.value = []
+}

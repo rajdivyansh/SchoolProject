@@ -1,0 +1,15 @@
+apply from: "file://$rootDir/cbg/project_setup/publishing-common.gradle"
+
+// Publish task configuration for jar project
+publishing {
+	// Standard publications for jar project
+	publications {
+		ivyJava(IvyPublication) {
+			from components.java
+			
+			descriptor.withXml {
+				generateIvyXml(asNode())
+			}
+		}
+	}
+}

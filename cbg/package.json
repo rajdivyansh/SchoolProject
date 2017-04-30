@@ -1,0 +1,14 @@
+{
+  "name": "cbg",
+  "version": "1.0",
+  "description": "Common build system in Gradle",
+  "main": "index.js",
+  "author": "Srinivas Handadi <srinivas.handadi@investo2o.com> ",
+  "dependencies": {
+    "clean-css": "~3.0.10",
+    "less": "~1.7.1",
+    "handlebars": "^2.0.0",
+    "uglify-js": "~2.4.16"
+  }
+}
+

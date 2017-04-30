@@ -1,0 +1,7 @@
+<Appenders>
+	<Syslog name="SYSLOG" facility="LOCAL7" host="localhost" port="514" protocol="UDP" format="RFC5424" mdcId="msg">
+		<LoggerFields>
+			<KeyValuePair key="msg" value="maasapplogs_@appname@ %d{dd-MMM-yyyy HH:mm:ss} %-5p [%c.%M : %L] :: %X :: %t :: %m%n%throwable{10}"/>
+		</LoggerFields>
+	</Syslog>
+</Appenders>

@@ -1,0 +1,30 @@
+/*
+ * This file is meant for tasks that'd help in debugging, analysing builds
+ */
+
+task printProperties {
+
+	group = "MaaS 360 Helper Tasks"
+	description = "Prints system and gradle properties"
+	
+	doLast {
+		def noOfNewLinesToPrint = 4 , noOfSplPatternsToPrint = 79
+		println "\n".multiply(noOfNewLinesToPrint)
+		println "*~".multiply(noOfSplPatternsToPrint) + "*"
+		println "\n".multiply(noOfNewLinesToPrint)
+		println "System Properties \n\n"
+		println System.properties
+		println "\n".multiply(noOfNewLinesToPrint)
+		println "*~".multiply(noOfSplPatternsToPrint) + "*"
+		println "\n".multiply(noOfNewLinesToPrint)
+		println "Gradle Properties \n\n"
+		println "Gradle version: ${gradle.gradleVersion}"
+		println "Gradle home directory : ${gradle.gradleHomeDir}"
+		println "Gradle user home directory : ${gradle.gradleUserHomeDir}\n\n\n"
+		println this.properties
+		println "\n".multiply(noOfNewLinesToPrint)
+		println "*~".multiply(noOfSplPatternsToPrint) + "*"
+		println "\n".multiply(noOfNewLinesToPrint)
+	}
+
+}

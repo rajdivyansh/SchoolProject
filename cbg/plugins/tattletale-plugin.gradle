@@ -1,0 +1,35 @@
+configurations {
+	tattletaleConf
+}
+
+ext.tattletaleConfig = [toolVersion: "1.1.2.Final", javassistVersion: "3.15.0-GA"]
+
+dependencies {
+	tattletaleConf("org.jboss.tattletale:tattletale:${tattletaleConfig.toolVersion}")
+	tattletaleConf("org.jboss.tattletale:tattletale-ant:${tattletaleConfig.toolVersion}")
+	tattletaleConf("org.javassist:javassist:${tattletaleConfig.javassistVersion}")
+}
+
+task extractArchive {
+	group = "Reports"
+	description = "Placeholder task for extracting archive"
+
+	ext.extractedPath = "${buildDir}/extracted-archive"
+}
+
+task tattletale(dependsOn: extractArchive) {
+	group = "Reports"
+	description = "Generates configured tattletale reports."
+
+	inputs.dir extractArchive.extractedPath
+
+	ext.reportDestination = "${buildDir}/reports/tattletale"
+	outputs.dir reportDestination
+
+	doLast {
+		ant.taskdef(name: "tattletaleReport", 
+				classname: "org.jboss.tattletale.ant.ReportTask", 
+				classpath: configurations.tattletaleConf.asPath)
+		
+	}
+}

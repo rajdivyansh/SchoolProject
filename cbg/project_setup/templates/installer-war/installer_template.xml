@@ -1,0 +1,76 @@
+<installation version="1.0">
+
+  <info>
+    <appname>@appname@</appname>
+    <appversion>@version@</appversion>
+    <uninstaller write="no">no</uninstaller>
+    <writeinstallationinformation>no</writeinstallationinformation>
+  </info>
+
+  <guiprefs width="640" height="480" resizable="yes" />
+
+  <locale>
+    <langpack iso3="eng" />
+  </locale>
+
+  <panels>
+    <panel classname="HelloPanel" />
+    <panel classname="PacksPanel" />
+    <panel classname="UserInputPanel" />
+    <panel classname="InstallPanel" />
+    <panel classname="FinishPanel" />
+  </panels>
+
+
+  <variables>
+    <variable name="tomcat.home" value="TOMCAT.HOME.VALUE" />
+    <variable name="cc.number" value="CC.NUMBER.VALUE" />
+    <variable name="appname" value="@appname@" />
+  </variables>
+
+  <packs>
+    <pack name="webapp" required="yes" preselected="yes" id="webapp">
+      <description>WAR File Pack</description>
+      <file override="true"  src="@appdistdir@/@appname@.war"  targetdir="${tomcat.home}/webapps" />
+    </pack>
+
+    <pack id="contextXml" name="contextXml" preselected="yes" required="no">
+      <description>Tomcat Context Xml file Pack</description>
+      <file override="true" src="@appconfigdir@/@appname@.xml"  targetdir="${tomcat.home}/conf/Catalina/localhost" />
+      <fileset dir="@appconfigdir@/" override="true" targetdir="${tomcat.home}/conf/Catalina/localhost" >
+            <include name="@appname@_*.xml"/>
+      </fileset>
+      <parsable  targetfile="${tomcat.home}/conf/Catalina/localhost/@appname@.xml" />
+    </pack>
+
+    <pack id="log4jConfig" name="log4jConfig" preselected="yes" required="no"  >
+      <description>Log4j Configuration Pack</description>
+      <file override="true" src="@appconfigdir@/@appname@-log4j.xml" targetdir="${tomcat.home}/conf/" />
+      <parsable  targetfile="${tomcat.home}/conf/@appname@-log4j.xml" />
+    </pack>
+
+    <pack name="propertiesFiles" preselected="yes" id="propsFile" required="no">
+      <description>Application properties file Pack</description>
+      <fileset dir="@appconfigdir@" targetdir="${tomcat.home}/conf/" override="true" >
+         <include name="*.properties"/> 
+      </fileset>
+    </pack>
+	
+	<pack name="syslog-appender-log4j-template" preselected="yes" id="syslogAppenderLog4jTemplate" required="no">
+      <description>Syslog support</description>
+    </pack>
+	
+  </packs>
+
+  <resources>
+    <res id="userInputSpec.xml" src="@stagingdir@/userInputSpec.xml" />
+    <res id="BSFActionsSpec.xml" src="@stagingdir@/BSFActionsSpec.xml" />
+  </resources>
+
+  <listeners>
+    <listener installer="BSFInstallerListener"
+              uninstaller="BSFUninstallerListener" />
+  </listeners>
+
+</installation>
+

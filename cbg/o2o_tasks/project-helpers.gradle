@@ -1,0 +1,97 @@
+ext {
+	MODULE_TYPE_JAR = "jar"
+	MODULE_TYPE_WAR = "war"
+	MODULE_TYPE_CMD_LINE = "command-line"
+	DEFAULT_NAME_OF_APPLICATION = "default"
+	investo2oHelperTaskGroup = "InvestO2O Helper Tasks"
+	//HELP_LINK_ON_GRADLE = "http://knowledge.investo2o.com/display/emc/Common+Build+on+Gradle"
+}
+
+task createModule {
+
+	group = investo2oHelperTaskGroup
+	description = "Creates a new project with the appropriate folder structure required."
+	
+	doLast {
+		def type = project.hasProperty("moduleType") ? moduleType : MODULE_TYPE_JAR
+		def name = project.hasProperty("moduleName") ? moduleName : DEFAULT_NAME_OF_APPLICATION
+
+		def baseDir = projectDir
+
+		if (new File("${baseDir}/${name}").isDirectory()) {
+			throw new GradleException("ERROR: A module with the given name already exists. Please choose another moduleName." )
+        //\n For help on usage, visit ${HELP_LINK_ON_GRADLE}")
+		}
+
+		logger.lifecycle "Module type is ${type}"
+		logger.lifecycle "Module name is ${name}"
+
+		def commonDirs = [
+							"${baseDir}/${name}/src/java", // java code
+							"${baseDir}/${name}/src/test/unit", // Unit test cases 
+							"${baseDir}/${name}/src/test/dataunit", // Database Unit Test Runners
+							"${baseDir}/${name}/src/test/dataint", // Re-runnable integration test cases 
+							"${baseDir}/${name}/src/test/integration", // Legacy integration test cases, more as runners 
+						]
+		commonDirs.each {
+			logger.lifecycle "Creating Directory " + it
+			new File(it).mkdirs();
+		}
+
+		switch (type) {
+			case MODULE_TYPE_JAR:
+				copy {
+					from "${rootDir}/cbg/project_setup/templates/${type}/"
+					into "${baseDir}/${name}/"
+				}
+				break
+
+			case MODULE_TYPE_WAR:
+				["${baseDir}/${name}/config", "${baseDir}/${name}/src/web/WEB-INF"].each {
+					logger.lifecycle "Creating Directory " + it
+					new File(it).mkdirs()	
+				}
+				copy {
+					from "${rootDir}/cbg/project_setup/templates/${type}"
+					into "${baseDir}/${name}/"
+					include "*.gradle"
+				}
+				copy {
+					from "${rootDir}/cbg/project_setup/templates/${type}"
+					into "${baseDir}/${name}/src/web/WEB-INF/"
+					include "web.xml"
+				}
+				new File("${baseDir}/${name}/config/${name}.xml").createNewFile()
+				break
+
+			/* Need to get the code reviewed. Imp since I need to place the files app.properties and app-log4j.xml in the templates folder.
+			case MODULE_TYPE_CMD_LINE:
+				["./${name}/config", "./${name}/src/java", "./${name}/src/scripts"].each {
+					new File(it).mkdirs()
+				}
+				copy {
+					from "${rootDir}/cbg/project_setup/templates/${type}"
+					into "./${name}/"
+					include "*.gradle"
+				}
+				copy {
+					from "${rootDir}/cbg/project_setup/templates/${type}"
+					into "./${name}/src/scripts/"
+					include "app.sh", "setenv.sh"
+					rename "app.sh", "${name}.sh"
+				}
+				copy {
+					from "${rootDir}/cbg/project_setup/templates/${type}"
+					into "./${name}/config/"
+					include "app.properties", "app-log4j.xml"
+					rename "app.properties", "${name}.properties"
+					rename "app-log4j.xml", "${name}-log4j.xml"
+					filter(org.apache.tools.ant.filters.ReplaceTokens, tokens: ["component.name" : name])
+				}
+				break
+			*/
+			default:
+				break
+		}
+	}
+}

@@ -1,0 +1,38 @@
+apply plugin: "ivy-publish"
+
+// Repositories where module dependencies will be searched and resolved
+repositories {	
+	maven { 
+		url "${mavenRemoteRepositoryUrl}" 
+	}
+	
+	ivy { 
+		url(isCI ? ivyCIRepositoryUrl : ivyLocalRepositoryUrl)
+		layout "pattern", {
+			artifact "${ivyArtifactPattern}"
+			ivy "${ivyXmlPattern}"
+		}
+	}
+
+	ivy {
+		url "${ivyRemoteRepositoryUrl}"
+		layout "pattern", {
+			artifact "${ivyArtifactPattern}"
+			ivy "${ivyXmlPattern}"
+		}
+	}
+}
+
+// Repositories where artifacts will be published
+publishing {
+	repositories {
+		// These are standard local repositories on the working machine
+		ivy {
+			url(isCI ? ivyCIRepositoryUrl : ivyLocalRepositoryUrl)
+			layout "pattern", {
+				artifact "${ivyArtifactPattern}"
+				ivy "${ivyXmlPattern}"
+			}
+		}
+	}
+}

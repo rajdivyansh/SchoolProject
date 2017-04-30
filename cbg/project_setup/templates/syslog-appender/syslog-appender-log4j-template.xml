@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE log4j:configuration PUBLIC "-//LOGGER" "http://logging.apache.org/log4j/1.2/apidocs/org/apache/log4j/xml/doc-files/log4j.dtd">
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+	<!-- Rolling File Appender, Rolls over to a new file after a specific size in KB or MB-->
+	<!-- Backup Index Specifies the number of files to keep as backups --> 
+
+	<appender name="SYSLOG"   class="org.apache.log4j.net.SyslogAppender">
+		<param name="Threshold"   value="DEBUG" />
+		<param name="Facility"    value="LOCAL7" />
+		<param name="SyslogHost"  value="localhost" />
+		<param name="header"      value="true" />
+		<layout class="org.apache.log4j.EnhancedPatternLayout">
+			<param name="ConversionPattern" value="maasapplogs_${appname} %d{dd-MMM-yyyy HH:mm:ss} %-5p [%c.%M : %L] :: %t :: %m%n%throwable{10}" />
+		</layout>
+		
+	</appender>
+  
+
+</log4j:configuration>  
+

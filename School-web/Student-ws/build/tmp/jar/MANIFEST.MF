@@ -1,0 +1,10 @@
+Manifest-Version: 1.0
+Gradle-Version: 2.12
+Created-By: 1.8.0_121 (Oracle Corporation)
+Implementation-Title: Student-ws
+Implementation-Version: school_version_number
+Build-Number: dev
+Build-Timestamp: 04/30/2017 12:24:27
+Build-User: rajesh
+Build-Host: rajesh-HP-Pavilion-Notebook
+

@@ -1,0 +1,181 @@
+/**
+ *  Collection of tasks to help ease local deployments in the development
+ *  environment.
+ *  - Sivakumar Kailasam (sivakumar.kailasam@in.ibm.com)
+ *  @version 1.0.0
+ **/
+
+def TASKS_GROUP_NAME = "Local deployment tasks"
+
+def getInstallerFileContent = { projectDir, project ->
+	def autoInstallerFile = file("${projectDir}/dist/auto_install_war_${project.name}.xml")
+	if (!autoInstallerFile.exists()) {
+		throw new GradleException("Auto installer file ${autoInstallerFile} doesn't exist")
+	}
+	return new XmlParser().parseText(autoInstallerFile.text)
+}
+
+def getPropertiesFromInstallerFile = { projectDir, project ->
+	def properties = [:]
+	def installerContent = getInstallerFileContent(projectDir, project)
+	installerContent."com.izforge.izpack.panels.UserInputPanel".userInput.entry.each { entry ->
+		properties.put(entry.@key, entry.@value)
+	}
+	return properties
+}
+
+def getPropertiesFromFile = { propertyFile ->
+		def propertiesToRead = new Properties() {
+			 @Override
+		     public synchronized Enumeration<Object> keys() {
+				 return Collections.enumeration(new TreeSet<Object>(super.keySet()));
+			 }
+		}
+		propertiesToRead.load(propertyFile.newDataInputStream())
+		return propertiesToRead
+}
+
+def createGlobalFile = { fileName ->
+    def file = file("${gradle.gradleUserHomeDir}/${fileName}.properties")
+	if (!file.exists()) {
+		file.createNewFile()
+		logger.lifecycle "Creating ${file}"
+	}
+	return file
+}
+
+task populateGlobalPropertyFile(dependsOn: install) {
+	group = TASKS_GROUP_NAME
+	description = "Adds properties from the project's auto installer.xml to the global property file"
+
+	doLast {
+		if (!project.hasProperty("globalPropertyFile")) {
+			ext.globalPropertyFile = "isolated_env"
+			logger.lifecycle "Missing argument globalPropertyFile, falling back to default file name '${globalPropertyFile}'."
+			logger.lifecycle "To use a custom file name pass it as -PglobalPropertyFile=53 for a file named 53.properties in your gradle user home"
+		}
+		ext.globalPropertyFileValueDefinitions = "${globalPropertyFile}_value_definitions"
+		def propertiesToAdd = getPropertiesFromInstallerFile(projectDir, project)
+		def globalPropertyFile = createGlobalFile(globalPropertyFile)
+		def valueDefinitionsFile = createGlobalFile(globalPropertyFileValueDefinitions)
+		def globalValueDefinitionProperties = getPropertiesFromFile(valueDefinitionsFile)
+		def globalProperties = getPropertiesFromFile(globalPropertyFile)
+		propertiesToAdd.each { propertyToAdd -> 
+			if(globalProperties[propertyToAdd.key] == null) {
+				logger.debug "Adding ${propertyToAdd.key}=${propertyToAdd.value}"
+				globalProperties.put(propertyToAdd.key, propertyToAdd.value)
+			} else {
+				logger.debug "Skipping ${propertyToAdd.key}"
+			}
+			if(globalValueDefinitionProperties[propertyToAdd.value] == null) {
+				logger.debug "Adding ${propertyToAdd.value} to value definitions file"
+				globalValueDefinitionProperties.put(propertyToAdd.value, "")
+			}
+		}
+		globalProperties.store(globalPropertyFile.newWriter(), null)
+		globalValueDefinitionProperties.store(valueDefinitionsFile.newWriter(), null)
+		logger.lifecycle "${globalPropertyFile} populated!"
+	}
+
+}
+
+task deployWebApp (dependsOn: install) {
+	group = TASKS_GROUP_NAME
+	description = "Deploys app to tomcat with relevant values set"
+	doLast {
+	    if (!project.hasProperty("globalPropertyFile")) {
+			ext.globalPropertyFile = "isolated_env"
+		}
+		ext.globalPropertyFileValueDefinitions = "${globalPropertyFile}_value_definitions"
+		def globalValues = getPropertiesFromFile(file("${gradle.gradleUserHomeDir}/${globalPropertyFileValueDefinitions}.properties"))
+		def appValues = getPropertiesFromFile(file("${gradle.gradleUserHomeDir}/${globalPropertyFile}.properties"))
+		appValues.each { appValue ->
+		    def valueFromGobalFile = globalValues[appValue.value]
+		    if (valueFromGobalFile != null) {
+				appValues[appValue.key] = valueFromGobalFile
+			}
+		}
+		def installerContent = getInstallerFileContent(projectDir, project)
+		installerContent."com.izforge.izpack.panels.UserInputPanel".userInput.entry.each { entry ->
+			entry.@value = appValues[entry.@key]
+		}
+		XmlNodePrinter nodePrinter = new XmlNodePrinter(new PrintWriter(new FileWriter("${projectDir}/dist/auto_install_war_${project.name}.xml")))
+		nodePrinter.setPreserveWhitespace(true)
+		nodePrinter.print(installerContent)
+		exec {
+			workingDir "${projectDir}/dist"
+			commandLine "java", "-jar", "${project.name}-war-installer.jar", "auto_install_war_${project.name}.xml"
+			standardOutput = new ByteArrayOutputStream()
+			errorOutput = new ByteArrayOutputStream()
+			ext.output = {
+			    def errContent = errorOutput.toString().trim()
+					println errContent
+				return standardOutput.toString()
+			}
+		}
+	}
+}
+
+task tc (dependsOn: dist) {
+//CLI property tpath
+	group = TASKS_GROUP_NAME
+	description = "Copy relevant files to specified local tomcat location"
+
+	if(project.hasProperty("tpath")) {
+
+
+		def warname  = "${project.name}.war"
+        def xmlname  = "${project.name}.xml"            
+        
+        def warorig  = "${projectDir}/dist/" + warname
+        def xmlorig  = "${projectDir}/dist/config/" + xmlname        
+        
+        def wardest  = tpath+"/webapps/"
+        def xmldest  = tpath+"/conf/Catalina/localhost/"
+
+        def confdest = tpath+"/conf/"
+
+		def filenames    = new File("${projectDir}/dist/config").listFiles().collect{it.getName()};
+		filenames = filenames.minus(xmlname)
+		
+		
+		def origfiles = filenames.collect{"${projectDir}/dist/config/" + it}
+		def destfiles = filenames.collect{confdest}
+		
+		
+		def files = [warname, xmlname].plus(filenames)
+		def origs = [warorig, xmlorig].plus(origfiles)
+		def dests = [wardest, xmldest].plus(destfiles)
+			
+
+            doLast{
+                println "TOMCAT PATH = " + tpath                
+                
+				int i=0;
+				for (i=0;i<origs.size();i++) {
+					def tempfile = new File(dests[i] + files[i]) 
+				
+					if(tempfile.exists() ) {
+						tempfile.delete()
+						println "Deleting old file " + tempfile.getAbsolutePath()
+					}
+
+					println "Copying file " + origs[i] + " to " + dests[i]
+
+					copy {
+						from origs[i]
+						into dests[i]
+					}
+				}
+
+		
+
+			}
+
+
+        
+			
+			
+			
+	}
+}

@@ -1,0 +1,71 @@
+ext.getSvnProps = {
+	Properties props = new Properties()
+	new ByteArrayOutputStream().withStream { os ->
+		try {
+			exec {
+				executable = "svn"
+				args = ["info", projectDir]
+				standardOutput = os
+			}
+
+			def outputAsString = os.toString()
+			
+			outputAsString.eachLine { line ->
+				int propSeparator = line.indexOf(':')
+				int lineLength = line.length()
+				if (propSeparator > 0 && propSeparator < lineLength) {
+					def key = line.substring(0, propSeparator).trim()
+					def value = line.substring(propSeparator + 1, lineLength).trim()
+					props.put(key, value)
+				}
+			}
+		} catch (Exception e) {
+			// A failure in this step shouldn't fail the build. That would be embarrasing :/
+			// We'll log this and investigate later
+			logger.warn("Couldn't execute 'svn info' on '${project.name}'", e)
+		}
+	}
+	return props
+}
+
+ext.createVersionProperties = {	
+	def versionPropertiesFile = file("${buildMetadataDir}/version.properties")
+
+	file(buildMetadataDir).mkdirs()
+
+	def buildTimestamp = new Date().format("MM-dd-yyyy HH:mm:ss")
+	def buildHostName = java.net.InetAddress.getLocalHost().getHostName()
+
+	def svnProps = isCI ? getSvnProps() : new Properties()
+	def versionProperties = [
+		"module": "${project.name}",
+		"version": "${project.version}",
+		"build": "${BUILD_VERSION}",
+		"svn.revision": "${svnProps.Revision}",
+		"build.timestamp": "${buildTimestamp}",
+		"build.host": "${buildHostName}",
+	] as Properties
+
+	logger.info("Version properties for '${project.name}': ${versionProperties}")
+
+	versionPropertiesFile.withWriter { writer ->
+		new ConfigSlurper().parse(versionProperties).writeTo(writer)
+	}
+
+	return versionPropertiesFile
+}
+
+ext.customManifestAttributes = [:]
+
+ext.getManifestAttributes = {
+	return [
+		"Gradle-Version": "${gradle.gradleVersion}",
+		"Created-By": "${System.properties['java.version']} (${System.properties['java.vendor']})",
+		"Implementation-Title": "${project.name}",
+		"Implementation-Version": "${project.version}",
+		"Build-Number": "${BUILD_VERSION}",
+		"Build-Timestamp": new Date().format("MM/dd/yyyy HH:mm:ss"),
+		"Build-User": System.properties["user.name"],
+		"Build-Host": java.net.InetAddress.getLocalHost().getHostName(),
+	] + customManifestAttributes
+}

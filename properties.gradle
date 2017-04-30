@@ -1,0 +1,6 @@
+ext {
+        project_group = "school"
+        release_version = "school_version_number"
+        build_js_minify = "true"
+        build_css_minify = "true"
+}

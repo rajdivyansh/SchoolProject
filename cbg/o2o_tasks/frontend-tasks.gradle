@@ -1,0 +1,343 @@
+ext {
+	// Enviroment specific properties
+	isWindowsOs = System.getProperty("os.name").toLowerCase().contains("windows")
+	commandLineStartParams = isWindowsOs ? ["cmd", "/c"] : []
+
+	// Helpers to get commandline args based on environment
+	generateCommandLineParams = { inputs -> return commandLineStartParams + inputs }
+	hasCustomNodePath = project.hasProperty("NODE_JS_PATH") && !"${NODE_JS_PATH}".trim().isEmpty()
+	nodeJsExecPath = hasCustomNodePath ? "${NODE_JS_PATH}/node" : "node"
+	npmExecPath = hasCustomNodePath ? "${NODE_JS_PATH}/npm" : "npm"
+	nodeSetupPath = "${gradle.gradleUserHomeDir}/node_setup"
+	nodeModulesPath = "${nodeSetupPath}/node_modules"
+
+	frontendTaskGroup = "MaaS360 frontend"
+
+	jsIncludes = ["**/*.js"]
+	lesscIncludes = ["**/*.less"]
+	cssIncludes = ["**/*.css"]
+	hbsIncludes = ["**/*.handlebars", "**/*.hbs"]
+	webStageTargetCopyExcludes = jsIncludes + lesscIncludes + cssIncludes + hbsIncludes
+	webStageDir = "${buildDir}/web-stage"
+
+	isDev = project.hasProperty("dev") && "true".equalsIgnoreCase(dev)
+	isJsMinify = !isDev && "true".equalsIgnoreCase(build_js_minify) 
+	isCssMinify = !isDev && "true".equalsIgnoreCase(build_css_minify)
+}
+
+/** Node module tasks: START **/
+task setupNodeModules(type: Copy) {
+	group = frontendTaskGroup
+	description = "Sets up node modules for frontend tasks."
+
+	from "${rootDir}/cbg/package.json"
+	into nodeSetupPath
+}
+
+task retrieveNodeModules(type: Exec, dependsOn: setupNodeModules) {
+	group = frontendTaskGroup
+	description = "Retrieves node modules required for frontend tasks."
+	
+	logging.level = LogLevel.ERROR
+	commandLine = generateCommandLineParams([npmExecPath, "install"])
+	workingDir nodeSetupPath
+	
+	inputs.files "${nodeSetupPath}/package.json"
+	outputs.files fileTree(nodeModulesPath)
+}
+
+task cleanupNodeSetup() {
+	group = frontendTaskGroup
+	description = "Clears node modules setup on local."
+	doLast {
+		new File(nodeSetupPath).deleteDir()
+	}
+}
+/** Node module tasks: END **/
+
+/** Handlebars tasks: START **/
+task frontendDoHandlebars(dependsOn: retrieveNodeModules) {
+	group = frontendTaskGroup
+	description = "Compiles handlebars files into JS files."
+
+	ext.stageTargetDir = "${webStageDir}/handlebars"
+	ext.getSourceFilePath = { conf -> return "${webAppSourceDir}/${conf.sourceFile}" }
+	ext.getTargetFilePath = { conf -> return "${stageTargetDir}/${conf.targetFile}" }
+	
+	doLast {
+		file(stageTargetDir).deleteDir()
+
+		handlebarFiles.each { conf ->
+			def sourceFilePath = getSourceFilePath(conf)
+			def targetFilePath = getTargetFilePath(conf)
+			file(targetFilePath).parentFile.mkdirs()
+
+			logger.info("Handlebars compile:\n source file: $sourceFilePath \n target file: $targetFilePath")
+
+			exec {
+				workingDir "$projectDir"
+				commandLine = generateCommandLineParams([nodeJsExecPath, "${nodeModulesPath}/handlebars/bin/handlebars",  "-m", sourceFilePath, "-f", targetFilePath])
+			}
+		}
+	}
+}
+
+afterEvaluate {
+	frontendDoHandlebars {
+		handlebarFiles.each { conf ->
+			inputs.files file(getSourceFilePath(conf))
+		}
+		outputs.files fileTree(stageTargetDir)	
+	
+		onlyIf { !handlebarFiles.isEmpty() }
+	}
+}
+/** Handlebars tasks: END **/
+
+/** Lessc tasks: START **/
+task frontendDoLess(dependsOn: retrieveNodeModules) {
+	group = frontendTaskGroup
+	description = "Processes and combines less CSS files into target CSS files as defined in the project's 'lesscFiles' configuration."
+
+	ext.stageTargetDir = "${webStageDir}/lessc"
+	ext.getSourceFilePath = { conf -> return "${stageTargetDir}/${conf.sourceFile}" }
+	ext.getTargetFilePath = { conf -> return "${stageTargetDir}/${conf.targetFile}" }
+	
+	ext.lesscInputFileTree = fileTree(dir: webAppSourceDir, includes: lesscIncludes)
+	inputs.files lesscInputFileTree
+	outputs.dir stageTargetDir
+
+	doLast {
+		file(stageTargetDir).deleteDir()
+
+		copy {
+			from lesscInputFileTree
+			into stageTargetDir 
+		}
+
+		lesscFiles.each { conf ->
+			def sourceFilePath = getSourceFilePath(conf)
+			def targetFilePath = getTargetFilePath(conf)
+			file(targetFilePath).parentFile.mkdirs()
+
+			exec {
+				workingDir "$projectDir"
+				commandLine = generateCommandLineParams([nodeJsExecPath, "${nodeModulesPath}/less/bin/lessc", "-x", sourceFilePath, targetFilePath])
+			}
+		}
+	}
+}
+
+afterEvaluate {
+	frontendDoLess {
+		onlyIf { !lesscFiles.isEmpty() }
+	}
+}
+/** Lessc tasks: END **/
+
+/** CSS tasks: START **/
+task cssSourceCopy(type: Copy) {
+	group = frontendTaskGroup
+	description = "Copies css content from sources for web-stage."
+	includeEmptyDirs = false
+
+	ext.stageSourceDir = "${webStageDir}/css-source"
+	from fileTree(dir: webAppSourceDir, includes: cssIncludes)
+	from frontendDoHandlebars
+	into stageSourceDir
+   
+    doFirst { file(stageSourceDir).deleteDir() }
+}
+
+task frontendCombineCSS(dependsOn: [retrieveNodeModules, cssSourceCopy]) {
+	group = frontendTaskGroup
+	description = "Combines sets of CSS files into single files as defined in the project's 'combinecssFiles' configuration."
+	
+	ext.stageTargetDir = "${webStageDir}/combine-css"
+	ext.getSourceFileSetPaths = { conf -> return conf.sourceFileSet.collect { "${cssSourceCopy.stageSourceDir}/${it}" } }
+	ext.getTargetFilePath = { conf -> return "${stageTargetDir}/${conf.targetFile}" }
+	
+	doLast {
+		file(stageTargetDir).deleteDir()
+
+		combinecssFiles.each { conf ->
+			def content = ""
+			getSourceFileSetPaths(conf).each { 
+				def fileToCopyFrom = file(it)
+				if (fileToCopyFrom.exists()) {
+					content += "${fileToCopyFrom.text}\n"
+				}
+			}
+			
+			def targetFileToBeCreated = file(getTargetFilePath(conf))
+			targetFileToBeCreated.parentFile.mkdirs()
+			targetFileToBeCreated.delete()
+			targetFileToBeCreated << content
+		}
+	}
+}
+
+afterEvaluate {
+	frontendCombineCSS {
+		combinecssFiles.each { conf ->
+			inputs.files(files(getSourceFileSetPaths(conf)))
+		}
+		outputs.files(fileTree(stageTargetDir))
+	
+		onlyIf { !combinecssFiles.isEmpty() }
+	}
+}
+
+task frontendMinifyCss(dependsOn: [retrieveNodeModules, cssSourceCopy, frontendCombineCSS]) {
+	group = frontendTaskGroup
+	description = "Minifies CSS files in web stage target folder which will be packaged into the final war artifact."
+
+	ext.stageTargetDir = "${webStageDir}/css"
+	ext.inputFileTreeDirs = [frontendCombineCSS.stageTargetDir, webAppSourceDir]
+	ext.getInputFileTree = { return fileTree(dir: it, includes: cssIncludes) }
+	
+	inputs.files inputFileTreeDirs.collect{getInputFileTree(it)}
+	outputs.files fileTree(stageTargetDir)
+
+	doLast {
+		file(stageTargetDir).deleteDir()
+
+		inputFileTreeDirs.each {
+			def sourceDir = file(it).absolutePath
+			def sourceFileTree = getInputFileTree(it)
+
+			copy {
+				from sourceFileTree
+				into stageTargetDir
+			}
+
+			sourceFileTree.files.each {
+				def sourceFileWithPath = it.absolutePath
+				def targetFileWithPath = sourceFileWithPath.replace(sourceDir, stageTargetDir)
+
+				file(targetFileWithPath).parentFile.mkdirs()
+
+				logger.info("Minifying CSS file at: ${sourceFileWithPath}")
+				exec {
+					commandLine = generateCommandLineParams([nodeJsExecPath, "${nodeModulesPath}/clean-css/bin/cleancss", targetFileWithPath, "-o", targetFileWithPath])
+				}
+			}
+		}
+	}
+
+	onlyIf { isCssMinify }
+}
+
+task cssTargetCopy(type: Copy, dependsOn: [retrieveNodeModules, cssSourceCopy, frontendCombineCSS]) {
+	group = frontendTaskGroup
+	description = "Defines CSS files to be packaged in the war."
+
+	from frontendMinifyCss.inputs.files
+	into frontendMinifyCss.stageTargetDir
+
+	doFirst { file(frontendMinifyCss.stageTargetDir).deleteDir() }
+
+	onlyIf { !isCssMinify }
+}
+/** CSS tasks: END **/
+
+/** JavaScript tasks: START **/
+task jsSourceCopy(type: Copy) {
+	group = frontendTaskGroup
+	description = "Copies JavaScript content from sources for web-stage."
+	includeEmptyDirs = false
+
+	ext.stageSourceDir = "${webStageDir}/js/source"
+	
+	from fileTree(dir: webAppSourceDir, includes: jsIncludes)
+	from frontendDoHandlebars
+	into stageSourceDir
+
+	doFirst { file(stageSourceDir).deleteDir() }
+}
+
+task frontendCombineJs(dependsOn: [retrieveNodeModules, jsSourceCopy]) {
+	group = frontendTaskGroup
+	description = "Combines sets of JavaScript files into single files as defined in the project's 'combineJsFiles' configuration."
+	
+	ext.stageTargetDir = "${webStageDir}/combine-js"
+	ext.getSourceFileSetPaths = { conf -> return conf.sourceFileSet.collect { "${jsSourceCopy.stageSourceDir}/${it}" } }
+	ext.getTargetFilePath = { conf -> return "${stageTargetDir}/${conf.targetFile}" }
+	
+	doLast {
+		file(stageTargetDir).deleteDir()
+
+		combineJsFiles.each { conf ->
+			def content = ""
+			getSourceFileSetPaths(conf).each { 
+				def fileToCopyFrom = file(it)
+				if (fileToCopyFrom.exists()) {
+					content += "${fileToCopyFrom.text}\n"
+				}
+			}
+			
+			def targetFileToBeCreated = file(getTargetFilePath(conf))
+			targetFileToBeCreated.parentFile.mkdirs()
+			targetFileToBeCreated.delete()
+			targetFileToBeCreated << content
+		}
+	}
+}
+
+afterEvaluate {
+	frontendCombineJs {
+		combineJsFiles.each { conf ->
+			inputs.files(files(getSourceFileSetPaths(conf)))
+		}
+		outputs.files(fileTree(stageTargetDir))
+	
+		onlyIf { !combineJsFiles.isEmpty() }
+	}
+}
+
+task frontendMinifyJs(dependsOn: [retrieveNodeModules, jsSourceCopy, frontendCombineJs]) {
+	group = frontendTaskGroup
+	description = "Minifies JavaScript files in web stage target folder which will be packaged into the final war artifact."
+
+	ext.stageTargetDir = "${webStageDir}/js/target"
+	ext.inputFileTreeDirs = [frontendCombineJs.stageTargetDir, jsSourceCopy.stageSourceDir]
+	inputs.files(inputFileTreeDirs.collect{fileTree(it)})
+	outputs.files(fileTree(stageTargetDir))
+
+	doLast {
+		file(stageTargetDir).deleteDir()
+
+		inputFileTreeDirs.each {
+			def sourceDir = file(it).absolutePath
+			def sourceFileTree = fileTree(it).exclude("**/WEB-INF/**")
+
+			sourceFileTree.files.each {
+				def sourceFileWithPath = it.absolutePath
+				def targetFileWithPath = sourceFileWithPath.replace(sourceDir, stageTargetDir)
+
+				file(targetFileWithPath).parentFile.mkdirs()
+
+				logger.info("Minifying JS file at: ${sourceFileWithPath}")
+				exec {
+					commandLine = generateCommandLineParams([nodeJsExecPath, "${nodeModulesPath}/uglify-js/bin/uglifyjs",  sourceFileWithPath , "--comments", "-o", targetFileWithPath])
+				}
+			}
+		}
+	}
+
+	onlyIf { isJsMinify }
+}
+
+task jsTargetCopy(type: Copy, dependsOn: [retrieveNodeModules, jsSourceCopy, frontendCombineJs]) {
+	group = frontendTaskGroup
+	description = "Copies JavaScript content from web-stage source to web-stage target"
+	includeEmptyDirs = false
+
+	from frontendMinifyJs.inputs.files
+	into frontendMinifyJs.stageTargetDir
+
+	doFirst { file(frontendMinifyJs.stageTargetDir).deleteDir() }
+
+	onlyIf { !isJsMinify }
+}
+/** JavaScript tasks: END **/

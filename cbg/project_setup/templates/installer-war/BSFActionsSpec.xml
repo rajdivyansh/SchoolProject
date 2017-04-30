@@ -1,0 +1,253 @@
+<bsfactions>
+ <pack name="webapp">
+  <script language="groovy">
+			<![CDATA[
+      beforePacks = {
+        def ant = new AntBuilder();
+
+        def appname = idata.getVariable("appname");
+        def tomcatHome = idata.getVariable("tomcat.home");
+
+        if (new java.io.File(tomcatHome + "/webapps/" + appname).exists()) {
+           ant.delete(dir: tomcatHome + "/webapps/" + appname, includeEmptyDirs:true);
+        }
+        if (new java.io.File(tomcatHome + "/work/Catalina/localhost/" + appname).exists()) {
+           ant.delete(dir: tomcatHome + "/work/Catalina/localhost/" + appname, includeEmptyDirs:true);
+        }
+        if (new java.io.File(tomcatHome + "/temp/").exists()) {
+          ant.delete(includeEmptyDirs:true) {
+            fileset( dir:tomcatHome + "/temp/", includes:"**/*")
+          }
+        }
+      }
+      beforePack = {}
+      beforeFile = {
+        // this is the first argument - a file object for the thing being expanded
+      	file
+        
+        backup = idata.getVariable("backup");
+        if (!"true".equalsIgnoreCase(backup)) {
+          return;
+        }
+
+        def ant = new AntBuilder();
+        def tomcatHome = idata.getVariable("tomcat.home");
+
+        def ccNumber = System.getProperty("cc.number");
+        if (ccNumber == null) {
+            ccNumber = idata.getVariable("cc.number");
+        }
+        
+        if (file.exists()) {
+          ant.copy(file: file, todir: tomcatHome + "/../bak/" + ccNumber );
+        }
+      }
+      afterFile = {}
+      afterPack = {}
+      afterPacks = {}
+      beforeDir = {}
+      afterDir = {}
+    ]]>
+  </script>
+ </pack>
+
+ <pack name="contextXml">
+  <script language="groovy">
+			<![CDATA[
+      beforePacks = {}
+      beforePack = {}
+      beforeFile = {
+        // this is the first argument - a file object for the thing being expanded
+      	file
+        
+        backup = idata.getVariable("backup");
+
+        if (!"true".equalsIgnoreCase(backup)) {
+          return;
+        }
+        
+        def ant = new AntBuilder();
+        def tomcatHome = idata.getVariable("tomcat.home");
+
+        def ccNumber = System.getProperty("cc.number");
+        if (ccNumber == null) {
+            ccNumber = idata.getVariable("cc.number");
+        }
+        
+        if (file.exists()) {
+          ant.copy(file: file, todir: tomcatHome + "/../bak/" + ccNumber );
+        }
+      }
+      afterFile = {}
+      afterPack = {
+
+        // need to pre-declare this closure, since it's recursive, then define it
+        def serializeElement
+        serializeElement = { e, level ->
+          indent = '  '
+          
+          // element tag name
+          def eName = e.name();
+          // the value of the name attribute
+          def aName = e.@name
+          
+          def xml = indent * (level-1) + "<$eName "
+          if (''!=aName.toString()) {
+            xml += "name=\"$aName\""
+          }
+          xml += "\n"
+        
+          e.attributes().findAll{ 'name' != it.getKey() }.sort().each{
+            xml += indent * level +it.getKey() + '="' + it.getValue() + '"\n'
+          }
+        
+          def subElements = e.'*'
+        
+          if (0==subElements.size()) {
+            xml += indent * level + "/>\n"
+          }
+          else {
+            xml += indent * level + ">\n\n"
+            subElements.each{
+              xml += serializeElement(it,level+1)
+            }
+            xml += "</$eName>\n"
+          }
+          xml += "\n"
+        
+          return xml
+        }
+        
+        def appname = idata.getVariable("appname")
+        def tomcatHome = idata.getVariable("tomcat.home")
+        
+        def databaseType = '' != idata.getVariable("database.type") ? idata.getVariable("database.type") : 'oracle'
+        
+        def contextXml = tomcatHome + '/conf/Catalina/localhost/' + appname+'.xml'
+        contextXmlDB = tomcatHome + '/conf/Catalina/localhost/' +appname + '_' + databaseType + '.xml'
+        
+        if (new java.io.File(contextXmlDB).exists()) {
+          def contextDB = new XmlSlurper().parse(new java.io.File(contextXmlDB));
+          def context =  new XmlSlurper().parse(new java.io.File(contextXml));
+          
+          println "Combining generic and database specific app context files: $contextXml and $contextXmlDB"
+          
+          contextDB.Resource.each{
+            resName = it.@name
+            contextResources = context.Resource.findAll{it.@name==resName}
+            println contextResources.size()
+            assert 1==contextResources.size(), "Unknown resource name or multiple resource entries in $contextXmlDB:  $resName"
+            
+            destAttribs = contextResources[0].attributes()
+            
+            it.attributes().each{
+              destAttribs[it.getKey()] = it.getValue();
+            }
+          }
+        
+          f = new java.io.File(contextXml)
+          f.delete()
+          f << serializeElement(context,1)
+        }
+        new java.io.File(tomcatHome + '/conf/Catalina/localhost/' +appname + '_oracle.xml').delete()
+        new java.io.File(tomcatHome + '/conf/Catalina/localhost/' +appname + '_edb.xml').delete()
+        new java.io.File(tomcatHome + '/conf/Catalina/localhost/' +appname + '_dirac_SQLite.xml').delete()
+        new java.io.File(tomcatHome + '/conf/Catalina/localhost/' +appname + '_db2.xml').delete()
+      }
+      afterPacks = {}
+      beforeDir = {}
+      afterDir = {}
+    ]]>
+  </script>
+ </pack>
+ <pack name="log4jConfig">
+  <script language="groovy">
+			<![CDATA[
+      beforePacks = {}
+      beforePack = {}
+      beforeFile = {
+        // this is the first argument - a file object for the thing being expanded
+      	file
+        
+        backup = idata.getVariable("backup");
+        if (!"true".equalsIgnoreCase(backup)) {
+          return;
+        }
+        
+        def ant = new AntBuilder();
+        def tomcatHome = idata.getVariable("tomcat.home");
+
+        def ccNumber = System.getProperty("cc.number");
+        if (ccNumber == null) {
+            ccNumber = idata.getVariable("cc.number");
+        }
+        
+        if (file.exists()) {
+          ant.copy(file: file, todir: tomcatHome + "/../bak/" + ccNumber );
+        }
+      }
+      afterFile = {}
+      afterPack = {}
+      afterPacks = {}
+      beforeDir = {}
+      afterDir = {}
+    ]]>
+  </script>
+ </pack>
+ <pack name="propertiesFiles">
+  <script language="groovy">
+			<![CDATA[
+      beforePacks = {}
+      beforePack = {}
+      beforeFile = {
+        // this is the first argument - a file object for the thing being expanded
+      	file
+        
+        backup = idata.getVariable("backup");
+        if (!"true".equalsIgnoreCase(backup)) {
+          return;
+        }
+        
+        def ant = new AntBuilder();
+        def tomcatHome = idata.getVariable("tomcat.home");
+
+        def ccNumber = System.getProperty("cc.number");
+        if (ccNumber == null) {
+            ccNumber = idata.getVariable("cc.number");
+        }
+        
+        if (file.exists()) {
+          ant.copy(file: file, todir: tomcatHome + "/../bak/" + ccNumber );
+        }
+      }
+      afterFile = {}
+      afterPack = {}
+      afterPacks = {}
+      beforeDir = {}
+      afterDir = {}
+    ]]>
+  </script>
+ </pack>
+ <pack name="syslog-appender-log4j-template">
+  <script language="groovy">
+	<![CDATA[
+    beforePacks = {}
+    beforePack = {}
+    beforeFile = {}
+    afterFile = {}
+    afterPack = {
+      def enable = idata.getVariable("syslog.enable");
+      def tomcatHome = idata.getVariable("tomcat.home");
+      def appname = idata.getVariable("appname");  
+
+      if (enable == "1") {
+          def loggingXmlFile = new File(tomcatHome + "/conf/" +appname+ "-log4j.xml")
+          loggingXmlFile.write(loggingXmlFile.text.replace('enableSyslog="false"', 'enableSyslog="true"'))
+      }
+    }
+    afterPacks = {}
+    beforeDir = {}
+    afterDir = {}
+  ]]></script>
+ </pack>
+</bsfactions>

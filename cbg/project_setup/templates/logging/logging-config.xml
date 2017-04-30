@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+
+	<Properties>
+		<Property name="log4j.maxBackupIndex">14</Property>
+		<Property name="log4j.maxFileSize">10MB</Property>
+		<Property name="log4j.rolloverInterval">1</Property>
+	</Properties>
+
+	<Appenders>
+		<RollingFile name="FILE"
+					 fileName="@logsPath@/@appName@.log"
+					 filePattern="@logsPath@/@appName@_%d{yyyy-MM-dd}_%i.zip">
+			<PatternLayout pattern="%d{dd-MMM-yyyy HH:mm:ss} %-5p [%c.%M : %L] :: %X :: %t :: %m%n"/>
+			<DefaultRolloverStrategy max="${sys:log4j.maxBackupIndex}"/>
+			<Policies>
+				<SizeBasedTriggeringPolicy size="${sys:log4j.maxFileSize}"/>
+				<TimeBasedTriggeringPolicy interval="${sys:log4j.rolloverInterval}" modulate="true"/>
+			</Policies>
+		</RollingFile>
+	</Appenders>
+
+	<Loggers>
+		<Root level="ERROR">
+			<AppenderRef ref="FILE"/>
+		</Root>
+		<Logger name="com.investo2o" level="ERROR"/>
+		<Logger name="org.springframework" level="ERROR"/>
+	</Loggers>
+
+</Configuration>

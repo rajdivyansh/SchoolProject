@@ -1,0 +1,4 @@
+apply from: "file://$rootDir/cbg/o2o_tasks/code-generator-tasks.gradle"
+
+typeGen.dependsOn(compileJava.dependsOn.collect{it})
+compileJava.dependsOn(typeGen)

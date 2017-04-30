@@ -1,0 +1,33 @@
+
+apply plugin: "java"
+apply plugin: "project-report"
+apply plugin: "build-dashboard"
+
+ext {
+	isPropertyOn = { name ->
+		return project.hasProperty(name) && "true".equalsIgnoreCase(project."${name}")
+	}
+
+	projectDistDir = "${projectDir}/dist/"
+	projectConfigDir = "${projectDir}/config/"
+	installerPropsDir = "installer-templates"
+	projectDistConfigDir = "${projectDistDir}/config/"
+	buildMetadataDir = "${buildDir}/build-metadata"
+	thirdPartyLibDir = "${rootDir}/third-party/libs"
+
+	isCI = isPropertyOn("CI")
+	isLeanBuild = isPropertyOn("ENABLE_LEAN_BUILD")
+
+	forLeanBuild = { closure ->
+		if (isLeanBuild) {
+			closure()
+		}
+	}
+
+	// TODO: The name doesn't sound quite right. What is considered 'normal'?
+	forNormalBuild = { closure ->
+		if (!isLeanBuild) {
+			closure()
+		}
+	}
+}

@@ -1,0 +1,16 @@
+<userInput>
+  <panel order="0">
+    <field type="text" variable="install.dir">
+      <spec txt="Install Directory:"
+            id="install.dir"
+            size="255" 
+            set="${install.dir}" />
+    </field>
+    <field type="text" variable="cc.number">
+      <spec txt="Change Control Number:"
+            id="cc.number"
+            size="10" 
+            set="${cc.number}" />
+    </field>
+  </panel>
+</userInput>

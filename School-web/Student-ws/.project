@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+	<name>Student-ws</name>
+	<comment/>
+	<projects/>
+	<natures>
+		<nature>org.eclipse.jdt.core.javanature</nature>
+	</natures>
+	<buildSpec>
+		<buildCommand>
+			<name>org.eclipse.jdt.core.javabuilder</name>
+			<arguments/>
+		</buildCommand>
+	</buildSpec>
+	<linkedResources>
+		<link>
+			<name>dummies</name>
+			<type>2</type>
+			<location>/home/rajesh/git/Schoolproject/cbg/project_setup/dummies</location>
+		</link>
+		<link>
+			<name>project_setup-dummies</name>
+			<type>2</type>
+			<location>/home/rajesh/git/Schoolproject/cbg/project_setup/dummies</location>
+		</link>
+		<link>
+			<name>cbg-project_setup-dummies</name>
+			<type>2</type>
+			<location>/home/rajesh/git/Schoolproject/cbg/project_setup/dummies</location>
+		</link>
+	</linkedResources>
+</projectDescription>

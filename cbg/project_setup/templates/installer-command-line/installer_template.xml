@@ -1,0 +1,54 @@
+<installation version="1.0">
+
+  <info>
+    <appname>@appname@</appname>
+    <appversion>@version@</appversion>
+    <uninstaller write="no">no</uninstaller>
+    <writeinstallationinformation>no</writeinstallationinformation>
+  </info>
+
+  <guiprefs width="640" height="480" resizable="yes" />
+
+  <locale>
+    <langpack iso3="eng" />
+  </locale>
+
+  <panels>
+    <panel classname="HelloPanel" />
+    <panel classname="PacksPanel" />
+    <panel classname="UserInputPanel" />
+    <panel classname="InstallPanel" />
+    <panel classname="FinishPanel" />
+  </panels>
+
+
+  <variables>
+    <variable name="install.dir" value="INSTALL_DIR_HERE_from_installer" />
+    <variable name="cc.number" value="cc.number.value" />
+    <variable name="appname" value="@appname@" />
+  </variables>
+
+  <packs>
+    <pack name="command-line" required="yes" preselected="yes" id="command-line">
+      <description>Command-Line Pack</description>
+      <fileset dir="@stagingdir@/@appname@" includes="**/*" targetdir="${install.dir}"></fileset>
+    </pack>
+	
+	<pack name="syslog-appender-log4j-template" preselected="yes" id="syslogAppenderLog4jTemplate" required="no">
+      <description>Syslog support</description>
+    </pack>
+	
+  </packs>
+
+  <resources>
+    <res id="userInputSpec.xml" src="@stagingdir@/userInputSpec.xml" />
+    <res id="BSFActionsSpec.xml" src="@stagingdir@/BSFActionsSpec.xml" />
+  </resources>
+
+  <listeners>
+    <listener installer="BSFInstallerListener"
+              uninstaller="BSFUninstallerListener" />
+  </listeners>
+
+</installation>
+

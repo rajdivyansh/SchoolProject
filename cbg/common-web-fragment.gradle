@@ -1,0 +1,142 @@
+// Inherit tasks/configurations from jar configuration
+apply from: "file://$rootDir/cbg/common-jar.gradle"
+
+// Plugin for generating war file for the project.
+apply plugin: "war"
+
+webAppDirName = "just/a/placeholder"
+
+configurations {
+	bundleWar
+}
+
+ext {
+	lesscFiles = []
+	combineJsFiles = []
+	handlebarFiles = []
+	combinecssFiles = []
+	
+	webAppSourceDir = project.hasProperty("webAppSourceDir") ? webAppSourceDir : "src/web"
+}
+
+apply from: "file://$rootDir/cbg/o2o_tasks/frontend-tasks.gradle"
+apply from: "file://$rootDir/cbg/o2o_tasks/classpath-tasks.gradle"
+
+createClasspathFile {
+	classpath = configurations.runtime
+}
+
+// War task configuration
+war {
+	archiveName = "${baseName}.${extension}"
+	ext.distFileName = "${baseName}.${extension}"
+
+	// Mark all bundleWar dependencies as inputs, so that if these dependencies change, the war task is triggered
+	inputs.files(configurations.bundleWar)
+
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+	// If it's a lean build, don't include jars in war
+	forLeanBuild { classpath = [] }
+
+	// For a normal build, include jars in the war
+	forNormalBuild {
+		classpath = classpath.filter { File file -> file.name.endsWith(".jar") }
+	}
+
+	webInf {
+		// Copy .tld files into WEB-INF/tld folder 
+		from(configurations.runtime) {
+			include "*.tld" 
+			into "tld"
+		}
+
+		from (jar.outputs.files) {
+			into "lib"
+			rename "${jar.archiveName}", "${jar.distFileName}"
+		}
+
+		// Include JS files in WEB-INF that cannot be minified but needed for reasons not worth mentioning
+		from(fileTree(dir: "${webAppSourceDir}/WEB-INF", includes: jsIncludes))
+
+		// Add classpath file
+		from(createClasspathFile)
+	}
+
+	// FIXME: Check if we really use these JS files in any apps. AFAIK these are useless ones.
+	from(configurations.runtime) {
+		include "*.js" 
+		into "js"
+	}
+
+	// Copy web content from various other sources as given below.
+	from(fileTree(dir: webAppSourceDir, excludes: webStageTargetCopyExcludes))
+	//from(isCssMinify ? frontendMinifyCss : cssTargetCopy)
+	//from(isJsMinify ? frontendMinifyJs : jsTargetCopy)
+	//from(frontendDoHandlebars)
+	//from(frontendDoLess)
+
+	doFirst {
+		// Copy version.properties into WEB-INF folder and generate manifest file
+		// This has to be done during execution phase, else incremental builds will never work as version properties have timestamp info! 
+		webInf { from(createVersionProperties) }
+		manifest.attributes(getManifestAttributes())
+
+		// Copy stuff from external war dependencies into this war
+		configurations.bundleWar.each { warDep ->
+			logger.info("Copying web content from external war: ${warDep}")
+			into ("/") {
+				exclude "**/*.jar"
+				from zipTree(warDep)
+			}
+		}
+	}
+}
+
+task distWarCopy(type: Copy) {
+	group = build.group
+	description = "Copies war artifact to project dist folder."
+
+	from war.outputs.files
+	into projectDistDir
+	rename "${war.archiveName}", "${war.distFileName}"
+}
+
+dist.dependsOn(distWarCopy, copyClasspathFiles)
+
+dependencies {
+	ext.bundleWarProject = { warProjectPath ->
+		if (!project.findProject(warProjectPath)) {
+			logger.info("'${warProjectPath}' missing in local checkout. Trying external repositories")
+			def name = warProjectPath.substring(warProjectPath.lastIndexOf(':') + 1)
+			dependencies.bundleWar("${project_group}:${name}:${release_version}@war")
+		} else {
+			logger.info("'${warProjectPath}' found in local checkout")
+			project.evaluationDependsOn(warProjectPath)
+			war {
+				logger.info("Configuring copy spec for war project dependency: ${warProjectPath}")
+				into ("/") {
+					exclude "*.jar"
+					with project(warProjectPath).war
+				}
+			}
+		}
+	}
+}
+
+// Publish task configuration for war project
+apply from: "file://$rootDir/cbg/project_setup/publishing-war.gradle"
+
+// Tattletale plugin helper tasks
+apply from: "file://$rootDir/cbg/plugins/tattletale-plugin.gradle"
+
+task extractWar(type: Copy, dependsOn: war) {
+	from zipTree("${buildDir}/libs/${war.archiveName}")
+	into extractArchive.extractedPath
+
+	doFirst {
+		file(extractArchive.extractedPath).deleteDir()
+	}
+}
+
+extractArchive.dependsOn(extractWar)

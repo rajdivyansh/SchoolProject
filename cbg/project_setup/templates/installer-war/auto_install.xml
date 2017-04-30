@@ -1,0 +1,18 @@
+<AutomatedInstallation langpack="eng">
+    <com.izforge.izpack.panels.HelloPanel/>
+    <com.izforge.izpack.panels.PacksPanel/>
+    <com.izforge.izpack.panels.UserInputPanel>
+        <userInput>
+            <entry key="tomcat.home" value="TOMCAT.HOME.VALUE"/>
+            <entry key="cc.number" value="cc.number.value"/>
+            <entry key="database.type" value="oracle" optional="true"/>
+            <entry key="backup" value="true" optional="true"/>
+			<entry key="syslog.enable" value="0" optional="true"/>
+            <entry key="syslog.conf.override" value="0" optional="true"/>
+            <entry key="fabric.installer.tmpdir" value="FABRIC.INSTALLER.TMPDIR" optional="true"/>
+        </userInput>
+    </com.izforge.izpack.panels.UserInputPanel>
+    <com.izforge.izpack.panels.InstallPanel/>
+    <com.izforge.izpack.panels.FinishPanel/>
+</AutomatedInstallation>
+

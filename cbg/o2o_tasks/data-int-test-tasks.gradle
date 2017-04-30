@@ -1,0 +1,15 @@
+// Task for running integration tests whose sources are defined in under "intTest" source set
+task dataIntTest(type: Test) {
+	group = test.group
+	description = test.description.replace("unit", "Data Integration Test cases run with H2")
+
+	testClassesDir = sourceSets.dataIntTest.output.classesDir
+	classpath = sourceSets.dataIntTest.runtimeClasspath
+	testLogging.exceptionFormat = "full"
+}
+
+afterEvaluate {
+	dataIntTest {
+		testSrcDirs = [sourceSets.dataIntTest.java.srcDirs]
+	}
+}

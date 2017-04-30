@@ -1,0 +1,24 @@
+// Publish task configuration for war project
+
+ext.gradleToIvyConfMappings << [
+	"providedCompile" : "provided->compile",
+	"providedRuntime" : "provided->runtime",
+]
+
+ext.ivyPublications = [
+	[name: project.name, type: "jar", conf: "runtime"],
+	[name: project.name, type: "war", conf: "war"]
+]
+
+publishing {
+	// Standard publications for war project
+	publications {
+		ivyWeb(IvyPublication) {
+			from components.web
+
+			descriptor.withXml {
+				generateIvyXml(asNode())
+			}
+		}
+	}
+}

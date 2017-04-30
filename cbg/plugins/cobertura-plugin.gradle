@@ -1,0 +1,30 @@
+// Dependencies required for the build script itself. These are NOT project dependencies.
+buildscript {
+	repositories {
+		maven { 
+			url "${mavenRemoteRepositoryUrl}"
+		}
+	}
+
+	dependencies {
+		classpath "net.saliman:gradle-cobertura-plugin:2.4.0"
+	}
+}
+
+apply plugin: net.saliman.gradle.plugin.cobertura.CoberturaPlugin
+
+cobertura {
+	coverageTestTasks { tasks.matching{ it.name.equals("test") } }
+}
+
+// Cobertura plugin properties
+// Apply these properties in the afterEvaluate closure as the source sets might vary across projects 
+afterEvaluate {
+	cobertura {
+		coverageSourceDirs = project.sourceSets.main.java.srcDirs
+		coverageFormats = ["html", "xml"]
+		if (project.hasProperty("srcGeneratedFilesPackage")) {
+			coverageExcludes = [".*${srcGeneratedFilesPackage}.*"]
+		}
+	}
+}

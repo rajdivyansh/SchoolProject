@@ -1,0 +1,156 @@
+/** Build file for a jar project */	
+
+// Plugins required for a jar project
+apply from: "file://$rootDir/cbg/plugins/common-import.gradle"
+
+// Apply properties (such as version number of artifacts) for the project
+apply from: "file://$rootDir/cbg/project_setup/apply-properties.gradle"
+
+// Apply source sets for a jar project
+apply from: "file://$rootDir/cbg/project_setup/source-sets-jar.gradle"
+
+// Repositories where module dependencies will be searched and resolved
+if (!file("$rootDir/repositories.gradle").exists()) {
+	throw new GradleException("Could not locate 'repositories.gradle' at root project level. Please ensure that there is one configured.")
+}
+apply from: "file://$rootDir/repositories.gradle"
+
+// Publish task configuration
+apply from: "file://$rootDir/cbg/project_setup/publishing-jar.gradle"
+
+// Apply common dependency configurations across projects
+apply from: "file://$rootDir/cbg/project_setup/project-dependencies.gradle"
+
+// Apply cobertura code coverage plugin
+//apply from: "file://$rootDir/cbg/plugins/cobertura-plugin.gradle"
+
+// Aliases for tasks which are easy to remember
+apply from: "file://$rootDir/cbg/o2o_tasks/aliases.gradle"
+
+// Helpers for generating metadata for artifacts
+apply from: "file://$rootDir/cbg/o2o_tasks/metadata-tasks.gradle"
+
+// Property file tasks
+apply from: "file://$rootDir/cbg/o2o_tasks/properties-file-tasks.gradle"
+
+// Documentation tasks
+apply from: "file://$rootDir/cbg/o2o_tasks/documentation.gradle"
+
+// Helper tasks
+apply from: "file://$rootDir/cbg/o2o_tasks/helper-tasks.gradle"
+
+apply from: "file://$rootDir/cbg/o2o_tasks/ember-tasks.gradle"
+
+//apply from: "file://$rootDir/cbg/plugins/checkstyle-plugin.gradle"
+
+// Integration test tasks
+apply from: "file://$rootDir/cbg/o2o_tasks/int-test-tasks.gradle"
+
+//Adding conditional import since wrapping around plugin seems to affect dependency resolution
+if(JavaVersion.current() >= JavaVersion.VERSION_1_7) {
+	// Sonar runner plugin
+	//apply from: "file://$rootDir/cbg/plugins/sonar-plugin.gradle"
+}
+
+test {
+	testLogging.exceptionFormat = "full"
+}
+
+clean.doLast {
+	file(projectDistDir).deleteDir()
+}
+
+sourceCompatibility = "1.8"
+targetCompatibility = "1.8"
+
+tasks.withType(JavaCompile) {
+	if (isPropertyOn("ENABLE_INCREMENTAL_JAVA_COMPILE")) {
+		options.incremental = true
+	}
+	if (isPropertyOn("ENABLE_STRICT_JAVA_COMPILE")) {
+		options.compilerArgs += ["-Xlint:all", "-Xlint:-deprecation", "-Werror"]
+	}
+}
+
+// Apply IDE plugin settings
+apply from: "file://$rootDir/cbg/plugins/ide-plugin-helpers.gradle"
+apply from: "file://$rootDir/cbg/plugins/eclipse-plugin.gradle"
+apply from: "file://$rootDir/cbg/plugins/idea-plugin.gradle"
+
+jar {
+	// Making the "jar" task depend on "test" task so that unit tests are always executed before building the jar
+	// This ensures that unit tests are executed for project dependencies as well when they are built 
+	dependsOn(test)
+
+	// The name used for the jar file under the project's dist folder 
+	ext.distFileName = "${baseName}.${extension}"
+
+	// Location of the installer_props.xml file 
+	ext.installerPropsFile = "${projectDir}/installer_props.xml"
+	
+	// If jar module has installer_props.xml, then package the properties files under config and installer_props.xml into the jar
+	// This will be used by the "install" task of a dependent module
+	if(file(installerPropsFile).exists()) {
+		
+		from(projectConfigDir) {
+			into installerPropsDir
+			include "*.properties"
+		}
+
+		from(installerPropsFile) {
+			into installerPropsDir
+		}
+	}
+
+	doFirst {
+		// This has to be done during execution phase, else incremental builds will never work as version properties have timestamp info!
+		from(createVersionProperties)
+		manifest.attributes(getManifestAttributes())
+	}
+}
+
+task distJarCopy(type: Copy, dependsOn: jar) {
+	group = build.group
+	description = "Copies jar artifact to project dist folder."
+	
+	from jar.outputs.files
+	into projectDistDir
+	rename "${jar.archiveName}", "${jar.distFileName}"
+}
+
+task distConfigCopy(type: Copy) {
+	group = build.group
+	description = "Copies project config files to project dist folder."
+
+	from projectConfigDir
+	into projectDistConfigDir
+
+	doFirst { file(projectDistConfigDir).deleteDir() }
+}
+
+// Placehodler dist task. wars and command-line tasks should add additional stuffs as required
+task dist(dependsOn: [build, distJarCopy, distConfigCopy]) {
+	group = build.group
+	description = "Assembles, tests and creates distributions based on module type."
+}
+
+ext.installerTaskGroup = "MaaS360 installer"
+
+// Placehodler install task. wars and command-line tasks should add additional stuffs as required
+task install(dependsOn: dist) {
+	group = installerTaskGroup
+	description = "Wrapper task that creates an installer based on module type."
+}
+
+defaultTasks "dist", "publish"
+
+// If there are specific build scripts that need to be applied for the repository
+// then these need to go into "custom-build.gradle" in root directory
+// These can potentially override default settings
+ext.rootCustomBuildFilePath = "${rootDir}/custom-build.gradle"
+if (file(rootCustomBuildFilePath).exists()) {
+	apply from: "file://${rootCustomBuildFilePath}"
+}
+
+// svn guard task
+apply from: "file://$rootDir/cbg/o2o_tasks/svn-guard.gradle"

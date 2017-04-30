@@ -1,0 +1,165 @@
+<bsfactions>
+  <pack name="command-line">
+    <script language="groovy"><![CDATA[
+      beforePacks = {       
+
+        def ant = new AntBuilder();
+        def installDir = idata.getVariable("install.dir");
+        def appname = idata.getVariable("appname");
+
+        def ccNumber = System.getProperty("cc.number");
+        if (ccNumber == null) {
+            ccNumber = idata.getVariable("cc.number");
+        }
+        
+        libDir = installDir + "/lib"
+        
+        if (new java.io.File(libDir).exists()) {
+          backup = idata.getVariable("backup");
+          if (!"true".equalsIgnoreCase(backup)) {
+            ant.delete(dir: libDir)
+          } else {
+            ant.move(file: libDir, todir: installDir + "/../bak/" + ccNumber + "/" + appname, overwrite: true )
+          }
+        }
+      }
+
+      afterPacks = {
+        def ant = new AntBuilder();
+        
+        def appname = idata.getVariable("appname")
+        def instances = idata.getVariable("instances")
+        def installDir = idata.getVariable("install.dir");
+        def ccNumber = System.getProperty("cc.number");
+        if (ccNumber == null) {
+            ccNumber = idata.getVariable("cc.number");
+        }
+        
+        
+        def copyFile = { src, dest -> 
+          if (new java.io.File(dest).exists()) {
+            backup = idata.getVariable("backup");
+            if ("true".equalsIgnoreCase(backup)) {
+              ant.copy(file: dest, todir: installDir + "/../bak/" + ccNumber, overwrite: true);
+            }
+          }
+          ant.copy(file: src, tofile: dest, overwrite: true) 
+        }
+        def substVar = { varName, value, propsFile, setenvFile='' ->
+          token = "\${" + varName + "}"
+          //value = variables.get(key)
+          ant.replace(file: propsFile,
+                          token: token,
+                          value: value)
+          if (new java.io.File(setenvFile).exists()) 
+          {
+            ant.replace(file: setenvFile,
+                        token: token,
+                        value: value)
+          }
+        
+        }
+        
+        variables = idata.getVariables()
+        templatePropsFile = installDir + "/config/" + appname+"-template.properties"
+        templateSetenvFile = installDir + "/bin/setenv-instance-template.sh"
+        
+        // this batch app doesn't have instances defined.  just copy the default template
+        if (null == instances)
+        {
+          propsFile = installDir + "/config/" + appname + ".properties"
+          copyFile(templatePropsFile,propsFile)
+          for ( key in variables.keys())
+          {
+            substVar(key, variables.get(key), propsFile, '')
+            
+          }
+        }
+        else {
+          for (i in instances.tokenize(","))
+          {
+            instPropsFile = installDir + "/config/" + appname+"-"+i+".properties"
+            copyFile(templatePropsFile,instPropsFile)
+            
+            instSetenvFile = installDir + "/bin/setenv-"+i+".sh"
+            if (new java.io.File(templateSetenvFile).exists()) 
+            {
+              copyFile(templateSetenvFile,instSetenvFile)
+            }
+  
+            instKey = "INSTANCE"+i+"_"
+            for ( key in variables.keys())
+            {
+              if ("instances" != key && (!key.startsWith("INSTANCE") || key.startsWith(instKey)))
+              {
+                varName = key.replace(instKey,"")
+                substVar(varName, variables.get(key), instPropsFile, instSetenvFile)
+              }
+            }
+            substVar("instanceid",i,instPropsFile,instSetenvFile)
+          }
+        }
+      }
+
+      beforePack = {
+      }
+
+      afterPack = {
+      }
+
+      beforeDir = {
+      }
+
+      afterDir = {
+      }
+
+      beforeFile = {
+        // this is the first argument - a file object for the thing being expanded
+      	file
+        
+        backup = idata.getVariable("backup");
+        if (!"true".equalsIgnoreCase(backup)) {
+          return;
+        }
+
+        def ant = new AntBuilder();
+        def installDir = idata.getVariable("install.dir");
+        def appname = idata.getVariable("appname");
+
+        def ccNumber = System.getProperty("cc.number");
+        if (ccNumber == null) {
+            ccNumber = idata.getVariable("cc.number");
+        }
+        
+        if (file.exists()) {
+          ant.copy(file: file, todir: installDir + "/../bak/" + ccNumber + "/" + appname, overwrite: true );
+        }
+      }
+      afterFile = {
+      }	  
+    ]]></script>
+  </pack>
+  <pack name="syslog-appender-log4j-template">
+    <script language="groovy">
+    <![CDATA[
+      beforePacks = {}
+      afterPacks = {
+        def installDir = idata.getVariable("install.dir");
+        def enable = idata.getVariable("syslog.enable");
+        def override = idata.getVariable("syslog.conf.override");
+        def appname = idata.getVariable("appname");
+
+        if(enable == "1" && override != "1") {
+            def loggingXmlFile = new File(installDir + "/config/" + appname + "-log4j.xml")
+            loggingXmlFile.write(loggingXmlFile.text.replace('enableSyslog="false"', 'enableSyslog="true"'))
+        }
+      }
+      beforePack = {}
+      afterPack = {}
+      beforeDir = {}
+      afterDir = {}
+      beforeFile = {}
+      afterFile = {}
+    ]]></script>
+  </pack>
+  </bsfactions>

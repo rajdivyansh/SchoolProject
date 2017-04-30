@@ -1,0 +1,30 @@
+/*
+ * For tasks that help us perform maintenance tasks across repos
+ * @author Sivakumar Kailasam
+ */
+
+def MAINTENANCE_TASKS_GROUP_NAME = "Maintenance tasks"
+
+
+task updateGradleVersion() {
+    group = MAINTENANCE_TASKS_GROUP_NAME
+	description = "Updates the gradle version in gradle wrapper. To be invoked as gradle :updateGradleVersion so that it runs only at root level"
+
+	doFirst {
+		if(newGradleVersion == "") {
+			println "Please pass a version to upgrade to as, -PnewGradleVersion=2.10"
+			return
+		}
+		def newWrapperUrl = "https\\://services.gradle.org/distributions/gradle-${newGradleVersion}-bin.zip"
+		
+		def propertiesFile = new File("${rootDir}/gradle/wrapper/gradle-wrapper.properties")
+		Properties wrapperProperties = new Properties()
+		wrapperProperties.load(propertiesFile.newDataInputStream())
+		wrapperProperties["distributionUrl"] = newWrapperUrl
+		propertiesFile.delete()
+		wrapperProperties.each { property -> propertiesFile << "${property.key}=${property.value}\n" }
+		println "Wrapper properties updated to ${newGradleVersion}"
+	}
+
+}
+

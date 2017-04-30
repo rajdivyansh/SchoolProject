@@ -1,0 +1,19 @@
+apply plugin: "idea"
+
+idea.module {
+	downloadJavadoc = true
+	downloadSources = true
+}
+
+afterEvaluate {
+	idea.module {
+		scopes.PROVIDED.plus += [configurations.provided]
+	
+		excludeDirs += file(projectDistDir)
+		sourceDirs -= file(sourceSets.dummies)
+		testSourceDirs += files(sourceSets.intTest.java.srcDirs)
+		testSourceDirs -= file(sourceSets.dummies)
+	}
+}
+
+tasks.idea.dependsOn(cleanIdea)

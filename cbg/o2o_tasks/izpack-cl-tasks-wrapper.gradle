@@ -1,0 +1,59 @@
+ext.installerType = "command-line"
+
+apply from: "file://$rootDir/cbg/o2o_tasks/izpack-installer-tasks.gradle"
+
+task copyTarContents(type: Copy) {
+	group = installerTaskGroup
+	description = "Copies contents from command-line tar artifact to install stage folder."
+	
+	into installStageDir
+	with distTar
+
+	doFirst { file("${installStageDir}/${distTar.baseName}").deleteDir() }
+}
+
+mergeInstallerXml {
+	ext.binDir = "${installStageDir}/${distTar.binDir}"
+	ext.configDir = "${installStageDir}/${distTar.configDir}"
+	inputs.dir binDir
+	inputs.dir configDir
+
+	doLast {
+		if (!overriddenInstallerFile.exists()) {
+			def mergedInstallerXmlNode = new XmlParser().parse(mergedInstallerFile)
+			def commandLinePackNode = mergedInstallerXmlNode.packs[0].children().find { it.@name == "command-line" } 
+			
+			def binDirTree = file(binDir)
+			binDirTree.eachFileRecurse {
+				if (it.name != "setenv.sh") {
+					def executableFilePath = it.absolutePath.replace(binDirTree.absolutePath, "").replace(File.separator, "/")
+					executableFilePath = executableFilePath.startsWith("/") ? executableFilePath.replaceFirst("/", "") : executableFilePath
+					def script = "\${install.dir}/bin/${executableFilePath}"
+					commandLinePackNode.appendNode("executable", [keep: "true", stage: "never", targetfile: script])
+				}
+			}
+			commandLinePackNode.appendNode("parsable", [targetfile: "\${install.dir}/bin/setenv.sh"])
+
+			file(configDir).eachFile {
+				def fileName = it.name
+				if (!fileName.endsWith("template.properties") && (fileName.endsWith(".properties") || fileName.contains("${project.name}-log4j"))) {
+					commandLinePackNode.appendNode("parsable", [targetfile: "\${install.dir}/config/${fileName}"])
+				}
+			}
+
+			writeXmlToFile(mergedInstallerFile, mergedInstallerXmlNode)
+		}
+	}
+}
+
+mergeAutoInstallXml {
+	autoInstallXmlName = "auto_install_cl_${project.name}.xml"
+}
+
+createInstaller {
+	dependsOn(copyTarContents)
+
+	installerJarName = "${project.name}-${installerType}-installer.jar"
+
+	inputs.files distTar.outputs.files
+}

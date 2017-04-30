@@ -1,0 +1,218 @@
+// Installer variables and helpers
+ext {
+	installStageDir = "${buildDir}/install-stage"
+	installerTemplateDir = "${rootDir}/cbg/project_setup/templates/installer-${installerType}"
+	buildInstallerPropsDir = "${installStageDir}/${installerPropsDir}"
+
+	writeXmlToFile = { fileObj, xmlNode ->
+		fileObj.parentFile.mkdirs()
+		def writer = new PrintWriter(fileObj)
+		def printer = new XmlNodePrinter(writer)
+		printer.preserveWhitespace = true
+		printer.print(xmlNode)
+		writer.close()
+	}
+}
+
+configurations {
+	installerConf
+}
+
+dependencies {
+	installerConf("org.codehaus.izpack:izpack-standalone-compiler:${izpack_version}") { transitive = false }
+	installerConf("org.apache.ant:ant-launcher:${ant_version}")
+	installerConf("org.apache.ant:ant:${ant_version}")
+	installerConf("bsf:bsf:${bsf_version}") { transitive = false }
+	//installerConf("commons-logging:commons-logging:${commons_logging_version}") { transitive = false }
+	installerConf("org.codehaus.groovy:groovy-all:${groovy_version}") { transitive = false }
+}
+
+task copyLibsForInstaller(type: Copy) {
+	group = installerTaskGroup
+	description = "Copies libraries to install-stage folder needed for running the installer task."
+	
+	ext.installStageLibDir = "${installStageDir}/lib"
+	from configurations.installerConf
+	into installStageLibDir
+	exclude { details -> details.file.name.contains('izpack') }
+	rename '(.*)-[0-9]+\\..*.jar', '$1.jar'
+}
+
+task mergeBsfActions {
+	group = installerTaskGroup
+	description = "Merges BSF action spec from app into the template for installer creation."
+
+	ext.customBsfActionsSpec = file("${projectDir}/src/installer/${installerType}/BSFActionsSpec.xml")
+	ext.overriddenBsfActionsSpec = file("${projectDir}/src/installer/BSFActionsSpec.xml")
+	ext.templateBsfActionsSpec = file("${installerTemplateDir}/BSFActionsSpec.xml")
+	ext.assembleLibs = file("${installerTemplateDir}/assembleLibs.xml")
+	inputs.files customBsfActionsSpec, overriddenBsfActionsSpec, templateBsfActionsSpec
+	forLeanBuild { inputs.files assembleLibs }
+
+	ext.mergedBsfActionsSpec = file("${installStageDir}/BSFActionsSpec.xml")
+	outputs.files mergedBsfActionsSpec
+
+	doLast {
+		def mergedBsfActionsSpecNode = new XmlParser().parse(overriddenBsfActionsSpec.exists() ? overriddenBsfActionsSpec : templateBsfActionsSpec)
+		if (customBsfActionsSpec.exists()) {
+			def customBsfActionSpecNode = new XmlParser().parse(customBsfActionsSpec)
+			customBsfActionSpecNode.children().each { mergedBsfActionsSpecNode.append(it) }
+		}
+
+		forLeanBuild {
+			def assembleLibsNode = new XmlParser().parse(assembleLibs)
+			assembleLibsNode.children().each { mergedBsfActionsSpecNode.append(it) }
+		}
+
+		writeXmlToFile(mergedBsfActionsSpec, mergedBsfActionsSpecNode)
+	}
+}
+
+task mergeInstallerXml {
+	group = installerTaskGroup
+	description = "Merges installer.xml from app into the template for installer creation."
+
+	ext.customInstallerFile = file("${projectDir}/src/installer/${installerType}/installer.xml")
+	ext.overriddenInstallerFile = file("${projectDir}/src/installer/installer.xml")
+	ext.templateInstallerFile = file("${installerTemplateDir}/installer_template.xml")
+	ext.installerLibsFile = file("${installerTemplateDir}/installerLibs.xml")
+	inputs.files customInstallerFile, templateInstallerFile
+	forNormalBuild { inputs.files installerLibsFile }
+	
+	ext.mergedInstallerFile = file("${installStageDir}/installer.xml")
+	outputs.files mergedInstallerFile
+
+	doLast {
+		def mergedInstallerXmlNode = new XmlParser().parse(overriddenInstallerFile.exists() ? overriddenInstallerFile : templateInstallerFile)
+		if (customInstallerFile.exists()) {
+			def customInstallerXmlNode = new XmlParser().parse(customInstallerFile)
+			def installationPacks = mergedInstallerXmlNode.packs[0]
+			customInstallerXmlNode.packs[0].children().each { installationPacks.append(it) }
+		}
+
+		forNormalBuild {
+			def installerLibsFileNode = new XmlParser().parse(installerLibsFile)
+			installerLibsFileNode.children().each { mergedInstallerXmlNode.append(it) }
+		}
+
+		forLeanBuild {
+			mergedInstallerXmlNode.packs[0].appendNode("pack", [name:"assemble-libs", preselected: "yes", id: "assembleLibs", required: "no"])
+			mergedInstallerXmlNode.packs[0].pack.findAll { it.@id == "assembleLibs" }.each {
+				it.appendNode("description", "Libraries assembler for lean builds")
+			}
+		}
+
+		def mergedInstallerFileTemp = file("${mergedInstallerFile.absolutePath}_temp")
+		writeXmlToFile(mergedInstallerFileTemp, mergedInstallerXmlNode)
+
+		def filterSpec = [
+			"stagingdir": file("${installStageDir}").absolutePath,
+			"appname": "${project.name}",
+			"version": "${project.version}",
+			"libdir" : file("${copyLibsForInstaller.installStageLibDir}").absolutePath,
+			"appdistdir": file("${projectDistDir}").absolutePath,
+			"appconfigdir": file("${buildInstallerPropsDir}").absolutePath
+		]
+		
+		ant.copy(file: mergedInstallerFileTemp, tofile: mergedInstallerFile, overwrite: true) {
+			filterset(begintoken: "@", endtoken: "@") {
+				filterSpec.each { token, value -> filter(token: token, value: value) }
+			}
+		}
+		mergedInstallerFileTemp.delete()
+	}
+}
+
+task copyUserInputSpec {
+	group = installerTaskGroup
+	description = "Copies userInputSpec.xml from app or template into install-stage folder for installer creation."
+
+	ext.overriddenUserInputSpec = file("${projectDir}/src/installer/userInputSpec.xml")
+	ext.templateUserInputSpec = file("${installerTemplateDir}/userInputSpec.xml")
+	inputs.files overriddenUserInputSpec, templateUserInputSpec
+
+	ext.mergedUserInputSpec = file("${installStageDir}/userInputSpec.xml")
+	outputs.files mergedUserInputSpec
+
+	doLast {
+		def sourceFile = overriddenUserInputSpec.exists() ? overriddenUserInputSpec : templateUserInputSpec
+		ant.copy(file: sourceFile, tofile: mergedUserInputSpec, overwrite: true)
+	}
+}
+
+task mergeAutoInstallXml(dependsOn: mergeInstallerXml) {
+	group = installerTaskGroup
+	description = "Merges auto_install.xml from app or template into install-stage folder for installer creation."
+
+	ext.projectInstallerXmls = files("${projectDir}/installer.xml", "${projectDir}/installer_props.xml")
+	ext.customAutoInstallFile = file("${projectDir}/src/installer/${installerType}/auto_install.xml")
+	ext.overridenAutoInstallFile = file("${projectDir}/src/installer/auto_install.xml")
+	ext.templateAutoInstallFile = file("${installerTemplateDir}/auto_install.xml")
+	inputs.files projectInstallerXmls, customAutoInstallFile, overridenAutoInstallFile, templateAutoInstallFile
+
+	ext.autoInstallXmlName = "auto_install_${project.name}.xml"
+	ext.ccNumber = project.hasProperty("CC_NUMBER") ? "${CC_NUMBER}" : "cc.number.value"
+
+	doLast {
+		def mergedAutoInstallNode = new XmlParser().parse(overridenAutoInstallFile.exists() ? overridenAutoInstallFile : templateAutoInstallFile)
+		def packsPanelNode = mergedAutoInstallNode.get("com.izforge.izpack.panels.PacksPanel")[0]
+		
+		def installerXmlNode = new XmlParser().parse(mergeInstallerXml.mergedInstallerFile)
+		def packIndex = 0
+		installerXmlNode.packs[0].children().each { 
+			packsPanelNode.appendNode("pack", [index: packIndex++, name: it.@name, selected: true]) 
+		}
+
+		def installerVarsNode = mergedAutoInstallNode.get("com.izforge.izpack.panels.UserInputPanel")[0].userInput[0]
+		installerVarsNode.children().findAll { it.@key == "cc.number" }.each { it.attributes()["value"] = ccNumber }
+
+		projectInstallerXmls.each { file ->
+			if (file.exists()) {
+				logger.info("Merging installer properties from ${file}")
+
+				// The markup of installer.xml/installer_props.xml is invalid (ie. has no root)!! So we'll add one to make it valid!
+				def xmlContent = "<installer>${file.text}</installer>"
+				new XmlParser().parseText(xmlContent).children().each {
+					installerVarsNode.append(it)
+				}
+			}
+		}
+
+		writeXmlToFile(mergedAutoInstallFile, mergedAutoInstallNode)
+		ant.checksum(file: mergedAutoInstallFile.absolutePath, todir: projectDistDir, algorithm: "MD5", fileext: ".md5")
+	}
+}
+
+task createInstaller(dependsOn: [dist, mergeBsfActions, mergeInstallerXml, copyUserInputSpec, copyLibsForInstaller]) {
+	group = installerTaskGroup
+	description = "Creates installer for ${installerType} app."
+
+	ext.installerJarName = "${project.name}-installer.jar"
+
+	doLast {
+		ant.taskdef(name: "izpack", classname: "com.izforge.izpack.ant.IzPackTask", classpath: configurations.installerConf.asPath)
+		ant.izpack(input: installerXmlPath, output: installerJar, installertype: "standard", basedir: "${projectDir}")
+		ant.checksum(file: installerJar, todir: projectDistDir, algorithm: "MD5", fileext: ".md5")
+	}
+}
+
+afterEvaluate {
+	createInstaller {
+		ext.installerXmlPath = mergeInstallerXml.mergedInstallerFile.absolutePath
+		ext.bsfActionSpecPath = mergeBsfActions.mergedBsfActionsSpec.absolutePath
+		ext.userInputSpecPath = copyUserInputSpec.mergedUserInputSpec.absolutePath
+		inputs.files installerXmlPath, bsfActionSpecPath, userInputSpecPath
+
+		ext.installerJar = "${projectDistDir}/${installerJarName}"
+		ext.installerJarChecksum = "${installerJar}.md5"
+		outputs.files installerJar, installerJarChecksum
+	}
+
+	mergeAutoInstallXml {
+		ext.mergedAutoInstallFile = file("${projectDistDir}/${autoInstallXmlName}")
+		ext.mergedAutoInstallFileChecksum = "${mergedAutoInstallFile.absolutePath}.md5"
+		outputs.files mergedAutoInstallFile, mergedAutoInstallFileChecksum
+	}
+}
+
+install.dependsOn(createInstaller, mergeAutoInstallXml)

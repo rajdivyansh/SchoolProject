@@ -1,0 +1,29 @@
+<bsfactions>
+	<pack name="assemble-libs">
+		<script language="groovy">
+			<![CDATA[
+			beforePacks = {}
+        	afterPacks = {
+				def ant = new AntBuilder()
+
+				def webAppDir = "${tomcat.home}/webapps/${appname}"
+				ant.unzip(src: "${webAppDir}.war", dest: webAppDir, overwrite: true)
+
+				def tempDir = idata.getVariable("fabric.installer.tmpdir")
+				def allJarsDir = "${tempDir}/third-party/"
+				ant.copy(todir: "${webAppDir}/WEB-INF/lib", overwrite: true) {
+					fileset(dir: allJarsDir, includesfile: "${webAppDir}/WEB-INF/classpath.txt")
+				}
+
+				ant.delete(file: "${webAppDir}.war")
+			}
+			beforePack = {}
+			afterPack = {}
+			beforeDir = {}
+			afterDir = {}
+			beforeFile = {}
+			afterFile = {}
+			]]>
+		</script>
+	</pack>
+</bsfactions>

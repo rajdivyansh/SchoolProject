@@ -1,0 +1,13 @@
+apply plugin: "pmd"
+
+pmd {
+	toolVersion = "5.1.1"
+	ruleSets = []
+	ext.defaultRulesFile = "${rootDir}/cbg/plugins/pmd/default-pmd-rules.xml"
+	ext.strictRulesFile = "${rootDir}/cbg/plugins/pmd/strict-pmd-rules.xml"
+	ruleSetFiles = isPropertyOn("ENABLE_STRICT_PMD") ? files(defaultRulesFile, strictRulesFile) : files(defaultRulesFile)
+}
+
+afterEvaluate {
+	jar.dependsOn tasks.withType(Pmd)
+}

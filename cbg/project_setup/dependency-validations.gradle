@@ -1,0 +1,130 @@
+afterEvaluate {
+	ext.dependencyValidations = [
+		isNotFacet: { 
+			return !project.path.contains("facets") 
+		},
+
+		validateFacetProjectInclusion: {
+			if (dependencyValidations.isNotFacet() && file("${projectDir}/build.gradle").text.contains("facets:")) {
+				throw new GradleException("Facet projects must be included through 'includeFacets' directive")
+			}
+		},
+
+		BLACKLISTED_GROUPS: [
+//			[group: 'org.easymock', alternative: 'org.mockito:mockito-core:${mockito_core_version}'],
+			[group: 'org.powermock', alternative: 'org.mockito:mockito-core:${mockito_core_version}'],
+			[group: 'com.metaparadigm', alternative: 'javax.json:javax.json-api:${javax_json_api_version}'],
+			[group: 'org.json', alternative: 'javax.json:javax.json-api:${javax_json_api_version}'],
+			[group: 'json', alternative: 'javax.json:javax.json-api:${javax_json_api_version}'],
+			[group: 'org.apache.tika', alternative: 'N/A'],
+			[group: 'org.codehaus.jackson', alternative: 'com.fasterxml.jackson.core:jackson-databind:${jackson_version}'],
+			[group: 'apache', alternative: 'N/A'],
+			[group: 'ctc', alternative: 'N/A'],
+			[group: 'com.springsource', alternative: 'N/A'],
+			[group: 'sun', alternative: 'javax.* group with similar artifact'],
+			[group: 'org.projectlombok', alternative: 'Code generation tools from IDE or commons-lang3']
+		] as Set,
+
+		BLACKLISTED_MODULES: [
+			[module: 'commons-collections', alternative: 'org.apache.commons:commons-collections4:${commons_collections4_version}'],
+			[module: 'json-rpc', alternative: 'javax.json:javax.json-api:${javax_json_api_version}'],
+			[module: 'org.json', alternative: 'javax.json:javax.json-api:${javax_json_api_version}'],
+			[module: 'json', alternative: 'javax.json:javax.json-api:${javax_json_api_version}'],
+			[module: 'jersey-core', alternative: 'javax.ws.rs:javax.ws.rs-api:${javax_ws_rs_api_version}'],
+			[module: 'jersey-client', alternative: 'N/A'],
+			[module: 'activemq-all', alternative: 'activemq-core + any other required modules'],
+			[module: 'mockito-all', alternative: 'org.mockito:mockito-core:${mockito_core_version}'],
+			[module: 'fest-assert', alternative: 'org.assertj:assertj-core:${assertj_version}'],
+			[module: 'ojdbc', alternative: 'ojdbc:ojdbc6:${oracle_ojdbc_version}'],
+			[module: 'spring-mock', alternative: 'org.springframework:spring-test:${spring_test_version}'],
+			[module: 'stax-api', alternative: 'N/A'],
+			[module: 'mail', alternative: 'javax.mail:javax.mail-api:${sun_mail_version}'],
+			[module: 'servlet-api', alternative: 'javax.servlet:javax.servlet-api:${sun_servletapi_version}'],
+			[module: 'servletapi', alternative: 'javax.servlet:javax.servlet-api:${sun_servletapi_version}'],
+			[module: 'jmock', alternative: 'org.mockito:mockito-core:${mockito_core_version}'],
+			[module: 'cglib', alternative: 'cglib:cglib-nodep:${cglib_version}'],
+			[module: 'asm-all', alternative: 'org.ow2.asm:asm:${asm_version}'],
+			[module: 'log4j', alternative: 'org.slf4j:slf4j-api:${slf4j_version}']
+		] as Set,
+
+		findBlacklistErrors: {
+			def blacklistedGroupNames = dependencyValidations.BLACKLISTED_GROUPS.collect { it.group }
+			def blacklistedModuleNames = dependencyValidations.BLACKLISTED_MODULES.collect { it.module }
+			def foundBlacklists = [] as HashSet
+			[configurations.intTestRuntime, configurations.provided].each { conf ->
+				conf.allDependencies.each { dep ->
+					if (blacklistedGroupNames.contains(dep.group)) {
+						def group = dependencyValidations.BLACKLISTED_GROUPS.find { it.group == dep.group }
+						foundBlacklists << "Blacklisted dependency: ${dep.group}:${dep.name}:${dep.version}. Use the alternative: ${group.alternative}"
+					}
+					if (blacklistedModuleNames.contains(dep.name)) {
+						def module = dependencyValidations.BLACKLISTED_MODULES.find { it.module == dep.name }
+						foundBlacklists << "Blacklisted dependency: ${dep.group}:${dep.name}:${dep.version}. Use the alternative: ${module.alternative}"
+					}
+				}
+			}
+			return foundBlacklists.isEmpty() ?
+				"" :
+				"Following blacklisted dependencies found in build.gradle:\n" + foundBlacklists.join("\n")
+		},
+
+		WRONGLY_SCOPED_MODULES: [
+			[module: 'junit', allowedScopes: ['testCompile', 'testRuntime']],
+			[module: 'mockito-core', allowedScopes: ['testCompile', 'testRuntime']],
+			[module: 'easymock', allowedScopes: ['testCompile', 'testRuntime']],
+			//[module: 'dbunit', allowedScopes: ['testCompile', 'testRuntime']],
+			[module: 'assertj-core', allowedScopes: ['testCompile', 'testRuntime']],
+			[module: 'servlet-api', allowedScopes: ['provided', 'testCompile', 'testRuntime']],
+			[module: 'ojdbc6', allowedScopes: ['provided', 'testCompile', 'testRuntime']],
+			[module: 'gwt-user', allowedScopes: ['provided']],
+			[module: 'xmlunit', allowedScopes: ['testCompile', 'testRuntime']],
+			[module: 'tomcat-el-api', allowedScopes: ['testCompile', 'testRuntime']],
+			[module: 'tomcat-jasper-el', allowedScopes: ['testCompile', 'testRuntime']]
+		],
+
+		findModuleScopingErrors: {
+			def wronglyScopedModuleNames = dependencyValidations.WRONGLY_SCOPED_MODULES.collect { it.module }
+			def foundWronglyScopedModules = [] as HashSet
+			[configurations.compile, configurations.runtime].each { conf ->
+				conf.allDependencies.each { dep ->
+					if (wronglyScopedModuleNames.contains(dep.name)) {
+						def module = dependencyValidations.WRONGLY_SCOPED_MODULES.find { it.module == dep.name }
+						foundWronglyScopedModules << "Module ${dep.group}:${dep.name}:${dep.version} scope must be one of ${module.allowedScopes}"
+					}
+				}
+			}
+			return foundWronglyScopedModules.isEmpty() ? 
+				"" :
+				"Follwing modules are defined with incorrect scope:\n" + foundWronglyScopedModules.join("\n")
+		},
+
+		validateDependencies: {
+			def errors = dependencyValidations.findBlacklistErrors() + "\n\n" + dependencyValidations.findModuleScopingErrors()
+			if (!errors.trim().isEmpty() && dependencyValidations.isNotFacet()) {
+				throw new GradleException(errors);
+			}
+		},
+
+		validateFacets: {
+			[configurations.intTestRuntime, configurations.provided].each { conf ->
+				conf.allDependencies.each { dep ->
+					if (
+						isPropertyOn("ENABLE_STRICT_FACETS") &&
+						(dep instanceof ExternalModuleDependency) && 
+						dependencyValidations.isNotFacet()
+					) {
+						throw new GradleException("${project.path}: Direct dependency declaration is not allowed for non-facet projects: ${dep}")
+					}
+				}
+			}
+		},
+
+		validateAll: {
+			dependencyValidations.validateFacetProjectInclusion()
+			dependencyValidations.validateDependencies()
+			dependencyValidations.validateFacets()
+		}
+	]
+
+	dependencyValidations.validateAll()
+}

@@ -1,0 +1,7 @@
+ext {
+	project_group = "investo2o"
+	release_version = "1.0"
+
+	ivyLocalRepositoryUrl = "file://${gradle.gradleUserHomeDir}/repo/local/ivy"
+	isCI = (project.hasProperty("CI")) && (CI.equalsIgnoreCase("true"))
+}

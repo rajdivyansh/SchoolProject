@@ -1,0 +1,10 @@
+<installation>
+	<!-- Needed for bsf -->
+	<jar src="@libdir@/bsf.jar"/>
+	<jar src="@libdir@/commons-logging.jar"/>
+
+	<!-- Needed for using groovy under bsf -->
+	<jar src="@libdir@/groovy-all.jar"/>
+	<jar src="@libdir@/ant.jar"/>
+	<jar src="@libdir@/ant-launcher.jar"/>
+</installation>

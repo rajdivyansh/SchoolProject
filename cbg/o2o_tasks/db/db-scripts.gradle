@@ -1,0 +1,319 @@
+apply from: "file://${rootDir}/cbg/project_setup/templates/root/repositories.gradle"
+apply from: "file://${rootDir}/cbg/o2o_tasks/db/properties.gradle"
+
+def generateMockTranslation(sourcePropertyFilePath, targetLangFilePath, lang) {
+	logger.lifecycle "Generating mock translations.."
+	def targetLangFile = new File(targetLangFilePath)
+	targetLangFile.delete()
+	targetLangFile.createNewFile()
+	def rpxClasspath = ["${rootDir}/cbg/RPX/rpx.jar", "${rootDir}/cbg/RPX"];
+	def rpxClasspathFiles = files(rpxClasspath)
+	javaexec {
+		main = 'Rpx'
+		classpath = rpxClasspathFiles
+		args = [sourcePropertyFilePath, targetLangFile.absolutePath]
+	}
+}
+
+ext {
+	investo2oMockTranslationTaskGroup = "Invest020 Mock Translation Helper Tasks"
+	generateMockTranslation = this.&generateMockTranslation
+}
+
+configurations { 
+	mockTranslationConf
+}
+
+dependencies {
+	mockTranslationConf "ibm:rpx:1.0"
+}
+
+task getRPXJar(type: Copy) {
+	group = investo2oMockTranslationTaskGroup
+	description = "Downloads the RPX tool used for mock translations, into the local repo"
+
+	from {
+		configurations.mockTranslationConf.collect { zipTree(it) }
+	}
+	into {
+		"${rootDir}/cbg/RPX/"
+	}
+}
+
+ext {
+	PROPERTY_FILE_EXTENSION = ".properties"
+	ENCODING = "UTF-8"
+	FILE_SEPERATOR = System.getProperty("file.separator")
+	LINE_SEPERATOR = System.getProperty("line.separator")
+	LANGUAGE_EN = 'en'
+	LANGUAGE_TA = 'ta'
+	investo2oDatabaseTaskGroup = "InvestO2O Database Tasks"
+	HELP_LINK = "LINK FOR GRADLE"
+}
+
+def writeTRMapToTempFile(textElemPath, tr_value_map) {
+	logger.lifecycle "Writing localization keys to properties file.."
+	def tempFilePath = textElemPath + TEMP_TRANSLATION_FILE_PATH_SUFFIX
+    new File(tempFilePath).withWriter { out ->
+        tr_value_map.each() { key, value ->
+            out.writeLine("${key}=${value}")
+        }
+    }
+}
+
+def replaceAllPlaceholders(sql, locale, valueMap) {
+    // Replace the global locale param
+    sql = sql.replaceAll(':locale', '\'' + locale + '\'')
+    valueMap.each {key, value ->
+        value = value.replaceAll('\\\'', '\'\'')
+        value = value.replaceAll('\\&', '\'||chr(38)||\'')
+        sql = sql.replaceAll(':'+key, '\'' + value + '\'')
+    }
+    
+    sql + ';'
+}
+
+def generateAndSaveMergeStatement(locale, schema, table, valueMap, sqlFile) {
+	logger.lifecycle "Generating \'" + locale + "\' queries for " + schema + "." + table
+    table = table.toUpperCase()
+	def abstractLocale = (locale != 'en' ? 'other' : locale)
+    
+    def localeTable = TABLES[table][abstractLocale]['TABLE_NAME']
+    def localeSchema = TABLES[table][abstractLocale]['SCHEMA']
+    
+    def mergeSql = COMMON_MERGE_PREFIX.replace('%schema%', localeSchema).replace('%table_name%', localeTable)
+    mergeSql += COMMON_USING_CLAUSE + COMMON_ON_CLAUSE
+    
+    // The on clause
+    def onClause = ''
+    TABLES[table][abstractLocale]['MATCH_COLS'].eachWithIndex { col, i ->
+        if(i > 0) {
+            onClause += ' AND '
+        }
+        onClause += 'tgt.' + col + '=' + TABLES[table][abstractLocale]['MATCH_VALS'][i]
+    }
+    mergeSql = mergeSql.replace('%on_clause%', onClause)
+    mergeSql = mergeSql.replace('%src_clause%', TABLES[table][abstractLocale]['SRC_CLAUSE_VALS'][0])
+    
+    // The update clause
+    if(TABLES[table][abstractLocale]['KEYS'] && TABLES[table][abstractLocale]['KEYS'].size() > 0) {
+        mergeSql += COMMON_MATCHED_CLAUSE
+        def updateClause = ''
+        
+        valueMap.each {col, value ->
+			if(!TABLES[table][abstractLocale]['KEYS'].containsKey(col)) {
+                logger.lifecycle('WARN:: Column: ' + col + ' cannot be updated for table ' + localeSchema + '.' + localeTable)
+            } else if(TABLES[table][abstractLocale]['ALL_COLS'].contains(col)) {
+                if(updateClause != '') {
+                    updateClause += ', '
+                }
+                updateClause += col + '=:' + col
+            }
+        }
+        
+        mergeSql = mergeSql.replace('%update_clause%', updateClause)
+    }
+    
+    // The insert clause
+    mergeSql += COMMON_NOT_MATCHED_CLAUSE
+    def insertClauseCols = ''
+    def insertClauseVals = ''
+    valueMap.each { col, val ->
+        if(TABLES[table][abstractLocale]['ALL_COLS'].contains(col) && TABLES[table][abstractLocale]['KEYS'].containsKey(col)) {
+            if(insertClauseCols != '') {
+                insertClauseCols += ', '
+                insertClauseVals += ', '
+            }
+            insertClauseCols += col
+            insertClauseVals += ':' + col
+        } else { /* Ignore the value */ }
+    }
+    
+    TABLES[table][abstractLocale]['AUTO_COLS'].eachWithIndex { it, i ->
+        if(!valueMap.containsKey(it) || valueMap[it] == null) {
+            if(insertClauseCols != '') {
+                insertClauseCols += ', '
+                insertClauseVals += ', '
+            }
+            insertClauseCols += it
+            insertClauseVals += TABLES[table][abstractLocale]['AUTO_VALS'][i]
+        }
+    }
+    
+    mergeSql = mergeSql.replace('%insert_cols%', insertClauseCols).replace('%insert_values%', insertClauseVals)
+    
+    mergeSql = replaceAllPlaceholders(mergeSql, locale, valueMap)
+    
+    sqlFile.append(mergeSql+'\n')
+    
+    true
+}
+
+def checkRequiredColumnValues(table, requiredKeyArray, valueMap) {
+	def allSuccess = true
+	if(requiredKeyArray && valueMap) {
+		// If the KEYS array is a map of column_name vs 1, 0 (1 = required, 0 = optional)
+		requiredKeyArray.each{key, val ->
+			if(val == 1 && !valueMap.containsKey(key.toLowerCase())) {
+				if(allSuccess) {
+					allSuccess = false
+					logger.lifecycle 'ERROR:: For table ' + table + ' :'
+				}
+				logger.lifecycle 'ERROR:: No value supplied for required key: ' + key.toLowerCase()
+			}
+		}
+		
+	}
+	
+	allSuccess
+}
+
+def processSingleLine(schema, table, line, tr_row_num, tr_value_map, tr_line_map, sqlFile) {
+	def lIndex = line.indexOf('|')
+	def realLocale = line.substring(0, lIndex)
+	line = line.substring(lIndex + 1).trim()
+	def locale = realLocale == 'en' ? realLocale : 'other'
+	def tabProps = TABLES[table]
+        
+	if(tabProps && tabProps[locale]) {
+		// Now time to regex this *bleep* up
+		def pairs = line =~ FILE_ROW_REGEX
+		def valueMap = [:]
+		def hasKeyVals = (pairs[0][1] != null)
+		pairs.eachWithIndex { pair, i ->
+			// First element in each pair is the whole pair, so skip that
+			if((hasKeyVals && pair[1] == null) || (!hasKeyVals && pair[1] != null)) {
+				// Throw/Print an error because a combination of named, and unnamed values is not allowed
+				logger.lifecycle 'ERROR:: Combination of values, and key-value pairs are not allowed. Please use only one of the styles. Error on line ' + line
+				return false
+			}
+			
+			def valueMapKey = (tabProps[locale]['KEYS'].keySet())[i].toLowerCase()
+			if(hasKeyVals) {
+				valueMapKey = pair[1].toLowerCase()
+			}
+			
+			valueMap[valueMapKey] = pair[2]
+			
+			if(locale == 'en' && tabProps[locale]['LOCALIZE_KEYS'].containsKey(valueMapKey)) {
+				def mapKey = tr_row_num + '--' + tabProps[locale]['LOCALIZE_KEYS'][valueMapKey]
+				tr_value_map[mapKey] = pair[2]
+				tr_line_map[tr_row_num] = ['schema': schema.toLowerCase(), 'table': table.toLowerCase(), 'valueMap': valueMap]
+			}
+		}
+		
+		// This method only requires the abstract locale
+		if(!checkRequiredColumnValues(table, tabProps[locale]['KEYS'], valueMap)) {
+			return false
+		}
+		
+		if(valueMap.size() > 0) {
+			return generateAndSaveMergeStatement(realLocale, schema, table, valueMap, sqlFile)
+		} else {
+			return true
+		}
+	} else {
+		return false
+	}
+}
+
+def copyProcessedLine(line, file) {
+	file.append(line + '\n')
+}
+
+def cleanUpTempFiles(basePath) {
+	logger.lifecycle "Cleaning up temporary files.."
+	
+	File f1 = new File(basePath+TEMP_TRANSLATION_FILE_PATH_SUFFIX)
+	File f2 = new File(basePath+FINAL_TRANSLATION_FILE_PATH_SUFFIX)
+	if(f1.exists()) {
+		f1.delete()
+	}
+	if(f2.exists()) {
+		f2.delete()
+	}
+}
+
+task generateMockSqls (dependsOn: getRPXJar) {
+	def textElemPath = project.projectDir.absolutePath
+	def f = new File(textElemPath + TEXT_FILES_BASE_PATH)
+	textElemPath += TEXT_ELEMENTS_BASE_PATH
+	def mergeSqlPath = textElemPath + MERGE_DATA_SQL_FILE_PATH_SUFFIX
+	def sqlFile = new File(mergeSqlPath)
+	
+	def tr_value_map = [:]
+	def tr_line_map = [:]
+	def tr_row_num = 0
+	def fileLineNum = 0
+	
+	doFirst {
+		f.eachDir { dir ->
+			def schemaName = dir.name
+			dir.eachFile { file->
+				def hasChanges = false
+				if(file.name.endsWith('.ini')) {
+					def copyFile = new File(file.absolutePath+'_temp')
+					def tableName = file.name.substring(0, file.name.lastIndexOf('.ini'))
+					fileLineNum = 0
+					file.eachLine { line ->
+						fileLineNum++
+						line = line.trim()
+						if(line != '' && !line.startsWith('##') && !line.startsWith('*')) {
+							tr_row_num++
+							if(processSingleLine(schemaName, tableName, line, tr_row_num, tr_value_map, tr_line_map, sqlFile)) {
+								line = '*' + line
+							} else {
+								logger.lifecycle 'ERROR:: Processing skipped for line#' + fileLineNum + ' in file: ' + file.absolutePath
+							}
+						}
+						copyProcessedLine(line, copyFile)
+						if(!hasChanges) {
+							hasChanges = true
+						}
+					}
+					
+					if(hasChanges) {
+						file.delete()
+						copyFile.renameTo(file)
+					}
+				}
+			}
+		}
+	}
+	
+	doLast {
+		if(tr_value_map.size() > 0) {
+			writeTRMapToTempFile(textElemPath, tr_value_map)
+			generateMockTranslation(textElemPath+TEMP_TRANSLATION_FILE_PATH_SUFFIX, textElemPath+FINAL_TRANSLATION_FILE_PATH_SUFFIX, LANGUAGE_TA)
+			File transProps = new File(textElemPath+FINAL_TRANSLATION_FILE_PATH_SUFFIX)
+			if(transProps.exists()) {
+				transProps.eachLine {line ->
+					line = line.trim()
+					if(line != '') {
+						def sepIndex = line.indexOf('--')
+						def keySepIndex = line.indexOf('=')
+						
+						def rowNum = line.substring(0, sepIndex).toInteger()
+						def key = line.substring(sepIndex+2, keySepIndex)
+						def value = line.substring(keySepIndex+1)
+						
+						if(tr_line_map[rowNum]) {
+							tr_line_map[rowNum]['valueMap'][key] = value
+						}
+					}
+				}
+				
+				tr_line_map.each {key, value ->
+					logger.lifecycle "Generating merge queries for mock translations.."
+					
+					generateAndSaveMergeStatement(LANGUAGE_TA, value['schema'], value['table'], value['valueMap'], sqlFile)
+				}
+			}
+		}
+		cleanUpTempFiles(textElemPath)
+		logger.lifecycle "Task complete."
+	}
+}
+
+apply from: "file://${rootDir}/cbg/o2o_tasks/db/db-tasks.gradle"
+

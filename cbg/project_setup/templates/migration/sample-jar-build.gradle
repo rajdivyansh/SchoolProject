@@ -1,0 +1,15 @@
+// Include common build scripts
+apply from: "file://$rootDir/cbg/common-jar.gradle"
+{{additionalBuildFiles}}
+
+// Module version and group
+version = "${release_version}"
+group = "${project_group}"
+
+dependencies 
+{
+{{deps}}
+}
+
+{{globalModuleExcludes}}
+

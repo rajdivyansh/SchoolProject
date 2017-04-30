@@ -1,0 +1,55 @@
+ext.idePluginHelpers = [
+	
+	// Get aggregated list of configurations that should be exported to eclipse
+	getConfList: {
+		return configurations.findAll { 
+			it.name.toLowerCase().contains("runtime") || it.name.equals("provided") 
+		}
+	},
+
+	// Helper to define project dependencies as external dependencies 
+	declareProjectDeps: { conf, projectNodes ->
+		def rootAbsPath = rootDir.absolutePath
+		def projectPaths = projectNodes.collect {
+			def absPath = it.absolutePath
+			def relativePathToRoot = absPath.replace(rootAbsPath, "")
+			def startIndex = rootAbsPath.length()
+			def endIndex = startIndex + relativePathToRoot.indexOf(File.separator + "build" + File.separator)
+			return absPath.substring(startIndex, endIndex).replace(File.separator, ":")
+		}
+
+		projectPaths.each { 
+			def dep = project.findProject(it)
+			dependencies."${conf.name}"("${dep.group}:${dep.name}:${dep.version}") {transitive = false} 
+		}
+	},
+
+	generateLibNodes: {
+		def projectNodes = [] as LinkedHashSet
+		def libNodes = [] as LinkedHashSet
+		idePluginHelpers.getConfList().each {
+			it.each {
+				if (it.absolutePath.contains(rootDir.absolutePath)) {
+					projectNodes << it
+				} else {
+					libNodes << it
+				}
+			}
+		}
+		return [projectNodes: projectNodes, libNodes: libNodes]
+	},
+
+	overrideClasspathXml: { classpathNode, conf, classpathNodeFunction ->
+		def allNodes = idePluginHelpers.generateLibNodes()
+		idePluginHelpers.declareProjectDeps(conf, allNodes.projectNodes)
+		
+		def ideConfNodes = configurations."${conf.name}".collect{it}
+		def allLibNodes =  ideConfNodes + allNodes.libNodes
+		allLibNodes.each {
+			def libAbsPath = it.absolutePath
+			if (libAbsPath.endsWith(".jar")) {
+				classpathNodeFunction(classpathNode, libAbsPath)
+			}
+		}
+	}
+]

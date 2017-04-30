@@ -1,0 +1,75 @@
+/**
+ * Gradle Tasks related to ember-cli apps should go in here.
+ * @author Sivakumar Kailasam
+ */
+
+
+def EMBER_TASKS_GROUP_NAME = "Ember tasks"
+
+ext.project_target_dir = project.hasProperty('project_target_dir') ? "${project_target_dir}": "src/web"
+ext.target_Jsp_file_name = project.hasProperty("target_Jsp_file_name") ? "${target_Jsp_file_name}" : "index"
+
+ext.emberProjects = project.hasProperty("emberProjects") ? emberProjects : []
+
+
+task deletePreviouslyGeneratedEmberAssets(type:Delete) {
+	group = EMBER_TASKS_GROUP_NAME
+	description = "Deletes previously generated ember.js assets in the project's target directory directory"
+	delete fileTree(dir: "${projectDir}/${project_target_dir}/")
+}
+
+
+task copyEmberAssets(type:Copy, dependsOn: deletePreviouslyGeneratedEmberAssets) {
+
+	group  = EMBER_TASKS_GROUP_NAME
+	description = "Copies ember-cli built assets into the target folder"
+
+	from "${projectDir}/ember-apps/dist/"
+	into "${projectDir}/${project_target_dir}/"	
+	rename "index.html", "${target_Jsp_file_name}.jsp"
+
+}
+
+task bundleEmberAssetsForCdn(){
+
+	group  = EMBER_TASKS_GROUP_NAME
+	description = "Copies ember-cli built assets from individual projects into ui-resources for hosting on cdn during builds"
+
+	doFirst {
+
+		def emberAssetsTargetFolder = "src/ember-apps-container/ember-apps"
+
+		logger.info("Deleting contents of ${emberAssetsTargetFolder}")
+		delete emberAssetsTargetFolder
+
+		emberProjects.each{ emberProject ->
+
+			def targetProjectToLookup = "${rootDir}/${emberProject}"
+			def config = new groovy.util.ConfigSlurper().parse(file("${targetProjectToLookup}/properties.gradle").toURL())
+
+			def targetJspFileNameToIgnore = "index"
+
+			config.ext.with {
+
+				targetJspFileNameToIgnore = isSet('target_Jsp_file_name') ? "${target_Jsp_file_name}": "index"
+			}
+
+			if(config.ext.IS_EMBER_CLI_APP) {
+
+				def emberSrcDir = "${targetProjectToLookup}/${config.ext.project_target_dir}/"
+				def emberTargetDir = "${emberAssetsTargetFolder}/"
+
+				logger.info("Copying contents of ${emberSrcDir}  to ${emberTargetDir}")
+				
+				copy {
+					from emberSrcDir
+					into emberTargetDir
+					exclude "${targetJspFileNameToIgnore}.jsp"
+				}
+
+			}
+			
+		}
+	}
+
+}

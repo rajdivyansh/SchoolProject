@@ -1,0 +1,18 @@
+apply plugin: "checkstyle"
+
+checkstyle {
+	showViolations = true	
+	ext.strictCheckstyleFile = file("${rootDir}/cbg/plugins/checkstyle/strict.xml")
+	ext.lenientCheckstyleFile = file("${rootDir}/cbg/plugins/checkstyle/lenient.xml")
+	configFile = isPropertyOn("ENABLE_STRICT_CHECKSTYLE") ? strictCheckstyleFile : lenientCheckstyleFile
+}
+
+tasks.checkstyleMain {
+	sourceSets.main.resources.srcDirs.each {
+		source it
+	}
+}
+
+afterEvaluate {
+	jar.dependsOn tasks.withType(Checkstyle)
+}

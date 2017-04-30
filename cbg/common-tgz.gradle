@@ -1,0 +1,71 @@
+// Inherit tasks/configurations from jar configuration
+apply from: "file://$rootDir/cbg/common-jar.gradle"
+apply from: "file://$rootDir/cbg/o2o_tasks/classpath-tasks.gradle"
+
+configurations {
+	commandLineAppConf.extendsFrom(provided, runtime) 
+}
+
+createClasspathFile {
+	classpath = configurations.commandLineAppConf + jar.outputs.files
+}
+
+task distTar(type: Tar) {
+	group = build.group
+	description = "Creates a tar distribution for command-line apps."
+
+	extension = "tgz"
+	archiveName = "${baseName}-bin.${extension}"
+	destinationDir = file(projectDistDir)
+	compression = Compression.GZIP
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+	ext {
+		customScriptsDir = "${projectDir}/src/scripts/"
+		configDir = "${baseName}/config"
+		binDir = "${baseName}/bin"
+		libDir = "${baseName}/lib"
+	}
+
+	from(createClasspathFile) { into configDir }
+	from("${projectDir}/config") { into configDir }
+	from(customScriptsDir) { into binDir }
+	if (!file("${customScriptsDir}/batch.sh").exists()) {
+		from ("${rootDir}/cbg/project_setup/templates/command-line/batch.sh") { into binDir }
+	}
+
+	// Include jars in the tgz for normal builds only
+	forNormalBuild {
+		from(createClasspathFile.classpath) {
+			into libDir
+			include "**/*.jar"
+			exclude "**/*.js", "**/*.tld"
+		}
+	}
+	
+	from("${rootDir}/cbg/project_setup/templates/logging/syslog-appender.xml") { into configDir }
+}
+
+afterEvaluate {
+	// Rename the [projectName]-[version].jar to [projectName].jar since fabric requires it to be in this format
+	distTar.rename "${jar.archiveName}", "${jar.distFileName}"
+}
+
+dist.dependsOn(distTar, copyClasspathFiles)
+
+// Installer tasks and configurations for tgz
+apply from: "file://$rootDir/cbg/o2o_tasks/izpack-cl-tasks-wrapper.gradle"
+
+// Tattletale plugin helper tasks
+apply from: "file://$rootDir/cbg/plugins/tattletale-plugin.gradle"
+
+task extractTar(type: Copy, dependsOn: distTar) {
+	from tarTree("${distTar.destinationDir}/${distTar.archiveName}")
+	into extractArchive.extractedPath
+
+	doFirst {
+		file(extractArchive.extractedPath).deleteDir()
+	}
+}
+
+extractArchive.dependsOn(extractTar)

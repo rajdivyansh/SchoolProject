@@ -1,0 +1,70 @@
+apply plugin: "eclipse"
+
+configurations {
+	eclipseProjectConf
+}
+
+eclipse.classpath {
+	downloadSources = true
+	downloadJavadoc = true
+	
+	plusConfigurations += [configurations.provided]
+
+
+	file {
+		// Override the generated .classpath XML with the custom one
+		withXml {
+			if (!isPropertyOn("DEFAULT_ECLIPSE")) {
+				def classpathNode = it.asNode()
+				def nodesToRemove = classpathNode.findAll {it.@path.endsWith("support") || it.@path.endsWith("dummies")}
+				nodesToRemove.each { classpathNode.remove(it) }
+
+				idePluginHelpers.overrideClasspathXml(classpathNode, configurations.eclipseProjectConf) { 
+					cpNode, libAbsPath ->
+//						cpNode.appendNode("classpathentry", [exported: "true", kind: "lib", path: libAbsPath])
+				}
+
+
+
+				classpathNode = it.asNode()
+
+				def cbgLibNodes = classpathNode.findAll { it.@kind == "lib" && it.@sourcepath == null}
+
+
+				def naturalLibNodes = classpathNode.findAll { it.@kind == "lib" && it.@sourcepath != null}
+				def naturalPaths = []
+
+				int i=0
+				for(item in naturalLibNodes) {
+					naturalPaths[i++] = item.@path
+				}
+
+				def nodesToKeep = []
+
+				cbgLibNodes.each{
+					if(!(it.@path in naturalPaths)) {
+						nodesToKeep.add(it);
+					}
+
+				}
+
+
+
+				cbgLibNodes.removeAll(nodesToKeep)
+
+
+				cbgLibNodes.each{classpathNode.remove(it)}
+
+				
+				def libNodes = classpathNode.findAll { it.@kind == "lib"}
+				libNodes.each{it.@exported = "true"}
+							
+				
+
+			}
+		}
+	}
+
+}
+
+tasks.eclipse.dependsOn(cleanEclipse)

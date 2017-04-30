@@ -1,0 +1,74 @@
+task checkUnVersionedFiles << {
+   		def cmd="svn st ${projectDir}"		
+		def proc = cmd.execute()
+		def svnStat = proc.in.text
+		def newFilesList = ""
+		def modifiedFilesList = ""
+		proc.waitFor()
+		if (proc.exitValue() != 0){
+			println "svn status command returned Error : " + proc.err.text
+		} 			   
+		else {
+				   
+			//Check if there are any Unversioned files.   
+			def newFiles = false
+			svnStat.eachLine { 				             
+				if (it.startsWith('?') && !shouldIgnore(it)) {
+					newFiles = true
+					newFilesList = newFilesList + it + "\n" 
+				}
+			}
+						
+			//Check if there are any Modified files. 
+			def modifiedFiles = false
+			svnStat.eachLine { 				             
+				if (it.startsWith('M')) {
+					modifiedFiles = true
+					modifiedFilesList = modifiedFilesList + it + "\n" 
+				}
+			}
+						
+			//Abort the build if there are any unversioned files. 					
+			if (newFiles) {	
+				def msg = "###################################################################\n\n" +
+						  "\t\t**********ABORTING BUILD**********\n\n" +
+						  "###################################################################\n" + 					  			
+						  "Build Failed : One or more unversioned files found in your working copy.\n" +
+						  "\t1. Please commit these files into SVN.\n\t\t\tOR\n" + 
+						  "\t2. Delete these files from the working copy if not required.\n\t\t\tOR\n" + 
+						  "\t3 Add these files into SVN ignore list if you do not want to include it in your source code repository." +
+						  " If you are using tortoise SVN client, you can right click on a file/folder and click Unversion and add to ignore list.\n" +
+						  "And try to build again."
+						  println "\n" + msg + "\n"
+						  println newFilesList + "\n" 					  
+						  throw new GradleException('One or more unversioned files found in your working copy')
+			} 
+						
+			//Display a warning message if any versioned files are modified.
+			if (modifiedFiles) {				
+				def msg = "###################################################################\n\n" +
+						  "\t\t***************WARNING**************\n\n" +
+						  "###################################################################\n" +  
+						  "The following files were modified in your working copy. Please do remember to commit them into SVN if its relevant."
+						  println "\n" + msg
+						  println modifiedFilesList + "\n"					  
+			} 	
+        }
+}
+
+// Ignore a list of value
+def shouldIgnore(str){
+	def ignore = false;
+	def strIgnoreCase = str.toLowerCase()
+	def ignoreList = ['.*dist$','.*target$','.*.classpath(.bak)?$','.*.project$', '.*\\.settings.*$', '.*build$', '.*\\.log.*$','.*\\W.gradle$', '.*cbg$']
+	ignoreList.each{
+		if (strIgnoreCase.matches(it)){
+			ignore = true
+		}
+	}
+	return ignore
+}
+
+checkUnVersionedFiles.onlyIf {!((project.hasProperty("doSVNCheck")) && (doSVNCheck.equalsIgnoreCase("false"))) && !((project.hasProperty("CI")) && (CI.equalsIgnoreCase("true"))) }
+
+//compileJava.dependsOn(checkUnVersionedFiles)
